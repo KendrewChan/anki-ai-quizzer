@@ -118,15 +118,15 @@ def test_deck_prompt_survives_rename_because_keyed_by_id():
 
 def test_deck_sharp_override_inherited_innermost_wins():
     cfg = dict(BASE)
-    assert config_ops.sharp_source(cfg, "Biology::Cells::Mitochondria", DECKS) == (True, None)  # default on
+    assert config_ops.deck_toggle_source(cfg, "sharp", "Biology::Cells::Mitochondria", DECKS) == (True, None)  # default on
     new, log, _, _ = apply([{"set_deck_sharp": {"deck": "Biology", "on": False}}], cfg=cfg, decks=DECKS)
-    assert new["deck_sharp"] == {"1": False} and log == ["✓ sharp questions for Biology and its subdecks: off"]
-    assert config_ops.sharp_source(new, "Biology::Cells::Mitochondria", DECKS) == (False, "Biology")
-    assert config_ops.sharp_for_deck(new, "Spanish", DECKS) is True
+    assert new["deck_sharp"] == {"1": False} and log == ["✓ Sharp questions for Biology and its subdecks: off"]
+    assert config_ops.deck_toggle_source(new, "sharp", "Biology::Cells::Mitochondria", DECKS) == (False, "Biology")
+    assert config_ops.deck_toggle_on(new, "sharp", "Spanish", DECKS) is True
     new, _, _, _ = apply([{"set_deck_sharp": {"deck": "Biology::Cells", "on": "on"}}], cfg=new, decks=DECKS)
-    assert config_ops.sharp_source(new, "Biology::Cells::Mitochondria", DECKS) == (True, "Biology::Cells")
+    assert config_ops.deck_toggle_source(new, "sharp", "Biology::Cells::Mitochondria", DECKS) == (True, "Biology::Cells")
     new, log, _, _ = apply([{"set_deck_sharp": {"deck": "Biology", "on": None}}], cfg=new, decks=DECKS)
-    assert new["deck_sharp"] == {"2": True} and log == ["✓ sharp questions for Biology: follow parent (default on)"]
+    assert new["deck_sharp"] == {"2": True} and log == ["✓ Sharp questions for Biology: follow parent (default on)"]
 
 
 def test_deck_sharp_parent_change_makes_subdecks_follow_others_kept():
@@ -140,26 +140,37 @@ def test_deck_sharp_parent_change_makes_subdecks_follow_others_kept():
 
 def test_deck_sharp_change_flips_effective_value():
     cfg = dict(BASE, deck_sharp={"1": False})
-    assert config_ops.deck_sharp_change(cfg, "Biology::Cells", DECKS) == {
+    assert config_ops.deck_toggle_change(cfg, "sharp", "Biology::Cells", DECKS) == {
         "set_deck_sharp": {"deck": "Biology::Cells", "on": True}}
-    assert config_ops.deck_sharp_change(cfg, "Spanish", DECKS) == {"set_deck_sharp": {"deck": "Spanish", "on": False}}
+    assert config_ops.deck_toggle_change(cfg, "sharp", "Spanish", DECKS) == {"set_deck_sharp": {"deck": "Spanish", "on": False}}
+
+
+def test_deck_ai_toggle_independent_and_cascades():
+    cfg = dict(BASE, deck_sharp={"1": False}, deck_ai={"3": False})
+    new, log, _, _ = apply([{"set_deck_ai": {"deck": "Biology", "on": False}}], cfg=cfg, decks=DECKS)
+    assert new["deck_ai"] == {"1": False} and new["deck_sharp"] == {"1": False}
+    assert log[0].startswith("✓ AI Study for Biology and its subdecks: off")
+    assert config_ops.deck_toggle_on(new, "ai", "Biology::Cells::Mitochondria", DECKS) is False
+    assert config_ops.deck_toggle_on(new, "ai", "Spanish", DECKS) is True
+    assert config_ops.deck_toggle_change(new, "ai", "Spanish", DECKS) == {"set_deck_ai": {"deck": "Spanish", "on": False}}
+    assert "set_deck_ai" in config_ops.CONFIG_SYSTEM_PROMPT
 
 
 def test_prune_drops_missing_decks_from_prompts_and_sharp():
-    cfg = dict(BASE, deck_prompts={"1": "x", "9": "y"}, deck_sharp={"9": False, "4": True})
+    cfg = dict(BASE, deck_prompts={"1": "x", "9": "y"}, deck_sharp={"9": False, "4": True}, deck_ai={"9": False})
     out = config_ops.prune_deck_prompts(cfg, {"1", "4"})
-    assert out["deck_prompts"] == {"1": "x"} and out["deck_sharp"] == {"4": True}
+    assert out["deck_prompts"] == {"1": "x"} and out["deck_sharp"] == {"4": True} and out["deck_ai"] == {}
 
 
 def test_config_prompt_shows_deck_sharp():
     cfg = dict(BASE, deck_sharp={"1": False})
     p = config_ops.config_prompt(cfg, "ok", "hi", decks=DECKS, selected="Biology::Cells")
-    assert "- Biology: off" in p and "Sharp questions here: off" in p
+    assert "- Biology: Sharp questions off" in p and "Sharp questions off" in p
 
 
 @pytest.mark.parametrize("change,msg", [
     ({"set_deck_sharp": {"deck": "Spanish", "on": "maybe"}}, "true or false"),
-    ({"set_deck_sharp": {"deck": "Spanish", "on": None}}, "no sharp questions setting"),
+    ({"set_deck_sharp": {"deck": "Spanish", "on": None}}, "no Sharp questions setting"),
     ({"set_deck_prompt": {"deck": "Mitochondria", "prompt": "x"}}, "ambiguous"),
     ({"set_deck_prompt": {"deck": "Nope", "prompt": "x"}}, "no deck named"),
     ({"set_deck_prompt": {"deck": "Spanish", "prompt": " "}}, "empty deck prompt"),
