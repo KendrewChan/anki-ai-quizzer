@@ -120,13 +120,29 @@ def test_deck_sharp_override_inherited_innermost_wins():
     cfg = dict(BASE)
     assert config_ops.sharp_source(cfg, "Biology::Cells::Mitochondria", DECKS) == (True, None)  # default on
     new, log, _, _ = apply([{"set_deck_sharp": {"deck": "Biology", "on": False}}], cfg=cfg, decks=DECKS)
-    assert new["deck_sharp"] == {"1": False} and log == ["✓ sharp questions for Biology: off"]
+    assert new["deck_sharp"] == {"1": False} and log == ["✓ sharp questions for Biology and its subdecks: off"]
     assert config_ops.sharp_source(new, "Biology::Cells::Mitochondria", DECKS) == (False, "Biology")
     assert config_ops.sharp_for_deck(new, "Spanish", DECKS) is True
     new, _, _, _ = apply([{"set_deck_sharp": {"deck": "Biology::Cells", "on": "on"}}], cfg=new, decks=DECKS)
     assert config_ops.sharp_source(new, "Biology::Cells::Mitochondria", DECKS) == (True, "Biology::Cells")
     new, log, _, _ = apply([{"set_deck_sharp": {"deck": "Biology", "on": None}}], cfg=new, decks=DECKS)
     assert new["deck_sharp"] == {"2": True} and log == ["✓ sharp questions for Biology: follow parent (default on)"]
+
+
+def test_deck_sharp_parent_change_makes_subdecks_follow_others_kept():
+    cfg = dict(BASE, deck_sharp={"2": True, "3": False, "4": False, "5": True})
+    new, log, _, _ = apply([{"set_deck_sharp": {"deck": "Biology", "on": False}}], cfg=cfg, decks=DECKS)
+    assert new["deck_sharp"] == {"1": False, "4": False, "5": True}
+    assert "2 subdeck setting(s) now follow it" in log[0]
+    new, _, _, _ = apply([{"set_deck_sharp": {"deck": "Biology::Cells::Mitochondria", "on": True}}], cfg=new, decks=DECKS)
+    assert new["deck_sharp"]["1"] is False and new["deck_sharp"]["3"] is True  # a subdeck exception keeps the parent
+
+
+def test_deck_sharp_change_flips_effective_value():
+    cfg = dict(BASE, deck_sharp={"1": False})
+    assert config_ops.deck_sharp_change(cfg, "Biology::Cells", DECKS) == {
+        "set_deck_sharp": {"deck": "Biology::Cells", "on": True}}
+    assert config_ops.deck_sharp_change(cfg, "Spanish", DECKS) == {"set_deck_sharp": {"deck": "Spanish", "on": False}}
 
 
 def test_prune_drops_missing_decks_from_prompts_and_sharp():
