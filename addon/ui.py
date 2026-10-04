@@ -289,7 +289,7 @@ body { display: flex; flex-direction: column; box-sizing: border-box; padding: 0
     log.innerHTML = '<div class="hint">' + hint.innerHTML + "</div>"; cmd.value = ""; setQuote(""); busy = false; wait = null;
   }
   document.getElementById("clr").addEventListener("click", () => { clearAll(); cmd.focus(); });
-  document.getElementById("x").addEventListener("click", () => pycmd("close"));
+  document.getElementById("x").addEventListener("click", () => pycmd("hide"));
   quoteEl.querySelector(".rm").addEventListener("click", () => { setQuote(""); cmd.focus(); });
   cmd.addEventListener("keydown", function (e) {
     e.stopPropagation();  // Anki's shortcuts must not fire while typing

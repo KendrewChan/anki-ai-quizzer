@@ -41,8 +41,11 @@ class Chat:
 
     def _on_bridge(self, message: str):
         command, _, arg = message.partition(":")
-        if command == "close":
-            self.on_close()
+        if command == "hide":  # the × in the page
+            try:
+                self.on_close()
+            except Exception as e:
+                self.reply(f"Couldn't close: {type(e).__name__}: {e}", True)
         elif command == "send":
             try:
                 data = json.loads(arg)
@@ -71,7 +74,7 @@ class ReviewPanel:
         mw.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.dock)
 
     def is_open(self) -> bool:
-        return self.dock is not None and self.dock.isVisible()
+        return self.dock is not None and not self.dock.isHidden()
 
     def open(self):
         if self.dock is None:
@@ -132,7 +135,7 @@ class AddPanel(QObject):
         dialog.installEventFilter(self)
 
     def is_open(self) -> bool:
-        return self.box.isVisible()
+        return not self.box.isHidden()
 
     def toggle(self):
         self.close() if self.is_open() else self.open()
@@ -157,7 +160,7 @@ class AddPanel(QObject):
         self.chat.reply(text, err)
 
     def eventFilter(self, obj, event):
-        if obj is self.dialog and self.box.isVisible():
+        if obj is self.dialog and not self.box.isHidden():
             t = event.type()
             if t in (QEvent.Type.Move, QEvent.Type.Resize):
                 self._place()
