@@ -305,7 +305,7 @@ def test_highlight_ask_answers_questions_and_edits():
     html = ui.ask_html()
     assert 'id="ai-ask-bubble"' in html and "aiStudy:open:" in html and "ai-ask-pop" not in html
     panel = panel_page.panel_html("Ask <me>")
-    assert "pycmd(\"hide\")" in panel and "Ask &lt;me&gt;" in panel and "HIGHLIGHTED" in panel and 'content: "> "' in panel and 'content: "● "' in panel and "id=\"clr\"" in panel
+    assert "pycmd(\"hide\")" in panel and "Ask &lt;me&gt;" in panel and "HIGHLIGHTED" in panel and 'content: "> "' in panel and 'content: "● "' in panel and "id=\"clr\"" in panel and "id=\"explain\"" in panel
     p = note_chat.new_note_prompt({"Front": "Q?", "Back": ""}, "better wording?", "Q", [("D", "terse")])
     assert p.startswith("NEW NOTE") and "[Front]\nQ?" in p and "Highlighted:\nQ" in p and p.endswith("better wording?")
     assert "NEW NOTE" in note_chat.EDIT_SYSTEM_PROMPT

@@ -5,6 +5,7 @@ What changed in each version, newest first. How the add-on works today is in [do
 ## Unreleased
 
 - Highlight-to-ask now opens a chat panel on the right instead of a popup. The window widens so the card doesn't move; the highlight is quoted above the chat box and kept above your message. The conversation stays across cards; **Clear** empties it. Replies put separate points on their own lines.
+- The chat panels have an **Explain** button above the chat box: one click asks for an explanation of the highlight.
 - Anki's Add Cards window gets an **AI Study** button that opens a chat beside it about the note you're writing (answers only, only when AI Study is on).
 - Space and **Show Answer** now grade what you typed, like Enter, instead of just flipping the card. With nothing typed they just show the answer; after a failed grading, Space shows it.
 - A question left empty is now marked **skipped** (grey –) instead of wrong, and doesn't pull down the verdict or ease.
