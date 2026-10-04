@@ -206,10 +206,10 @@ def test_replace_missed_clean_review_keeps_points_and_counts_the_review():
     assert grading.replace_missed("A", [], "D") == "A<hr><b>Missed (D)</b> <i>1 review</i>: nothing"
 
 
-def test_missed_count_turns_red_from_four_and_old_suffix_format_is_read():
-    out = grading.replace_missed("A<hr><b>Missed (D)</b> <i>5 reviews</i><ul><li>hot <i>×3</i></li></ul>", ["hot"], "E")
-    assert '<li><b style="color:#d33">[4]</b> hot</li>' in out
-    assert grading.parse_missed(out) == (6, [("hot", 4)])
+def test_missed_count_turns_red_from_three_and_old_suffix_format_is_read():
+    out = grading.replace_missed("A<hr><b>Missed (D)</b> <i>5 reviews</i><ul><li>hot <i>×2</i></li><li>mild <i>×1</i></li></ul>", ["hot", "mild"], "E")
+    assert '<li><b style="color:#d33">[3]</b> hot</li>' in out and "<li><b>[2]</b> mild</li>" in out
+    assert grading.parse_missed(out) == (6, [("hot", 3), ("mild", 2)])
 
 
 def test_replace_missed_reads_the_old_uncounted_format():

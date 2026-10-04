@@ -229,7 +229,7 @@ MAX_MISSED = 12  # points kept in a note's Missed section; the least-missed (the
 _LI = re.compile(r"<li>(.*?)</li>", re.I | re.S)
 _COUNT = re.compile(r"^\s*<b[^>]*>\s*\[(\d+)\]\s*</b>\s*", re.I)  # the count, as written in front of a point
 _OLD_COUNT = re.compile(r"\s*<i>\s*×\s*(\d+)\s*</i>\s*$", re.I)  # earlier versions put "×N" after it
-RED_FROM = 4  # a point missed this many times or more is marked red
+RED_FROM = 3  # a point missed this many times or more is marked red
 _REVIEWS = re.compile(r"<i>\s*(\d+)\s+reviews?\s*</i>", re.I)
 
 
