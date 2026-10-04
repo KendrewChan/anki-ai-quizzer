@@ -52,8 +52,11 @@ class Chat:
         elif command == "close":
             self.on_close()
         elif command == "send":
-            data = json.loads(arg)
-            self.on_send(str(data.get("sel", "")), str(data.get("text", "")).strip())
+            try:
+                data = json.loads(arg)
+                self.on_send(str(data.get("sel", "")), str(data.get("text", "")).strip())
+            except Exception as e:  # never leave the page on "Thinking…"
+                self.reply(f"Failed: {type(e).__name__}: {e}", True)
 
 
 class ReviewPanel:
