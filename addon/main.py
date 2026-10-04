@@ -17,6 +17,7 @@ from .chat_page import deck_ids, load_config, migrate_once
 from .config_page import ConfigPage
 from .generate_page import GeneratePage
 from .session import make_backend, provider_of
+from .side_panel import AskPanel
 
 ADDON = __name__.split(".")[0]
 
@@ -29,6 +30,7 @@ class State:
         self.cwd = None
         self.page = None
         self.gen_page = None
+        self.panel = None  # side_panel.AskPanel: the highlight-to-ask chat
         self.action = None
         self.reset()
 
@@ -37,7 +39,6 @@ class State:
         self.card_id = None
         self.ctx = {}  # card_id -> {"q", "a", "questions"}
         self.verdicts = {}  # card_id -> (verdict, questions, answers)
-        self.ask_toast = {}  # card_id -> (text, is_error): an edit's reply, shown once the card redraws
         self.failures = 0
         self.disabled = None  # reason string once AI is off for this session
 
@@ -104,14 +105,14 @@ def on_error(err) -> str:
 
 def on_card_will_show(text: str, card, kind: str) -> str:
     if kind == "reviewQuestion" and active(card):
-        return ui.question_html(text, rewrite_enabled(card)) + ui.ask_html("question")
+        return ui.question_html(text, rewrite_enabled(card)) + ui.ask_html()
     if kind != "reviewAnswer":
         return text
     if card.id in S.verdicts:
         # Below the front: Anki scrolls <hr id=answer> to the top, so anything above it starts off-screen.
         front, back = grading.split_answer(text)
         text = front + ui.verdict_html(*S.verdicts[card.id]) + back
-    return text + ui.ask_html("answer", S.ask_toast.pop(card.id, None)) if active(card) else text
+    return text + ui.ask_html() if active(card) else text
 
 
 def on_show_question(card):
@@ -161,8 +162,8 @@ def on_js_message(handled, message: str, context):
             mw.reviewer._showAnswer()
     elif message.startswith("aiStudy:submit:"):
         submit(message[len("aiStudy:submit:"):])
-    elif message.startswith("aiStudy:ask:"):
-        ask(message[len("aiStudy:ask:"):])
+    elif message.startswith("aiStudy:open:"):
+        S.panel.show_selection(message[len("aiStudy:open:"):])
     return (True, None)
 
 
@@ -190,13 +191,12 @@ def submit(payload: str):
     session().request(card_id, prompt, grading.parse_grade, cfg().get("grade_timeout_s", 60), on_graded)
 
 
-def ask(payload: str):
-    """Highlight-to-ask, either side. Question side: help without the answer, never edits. Answer side: answer
-    questions and change the note when asked (one undo step)."""
-    card = mw.reviewer.card
-    data = json.loads(payload)
-    sel, request = str(data.get("sel", "")), str(data.get("text", "")).strip()
+def ask(sel: str, request: str):
+    """Highlight-to-ask from the side panel, about the card on screen. Question side: help without the answer, never
+    edits. Answer side: answer questions and change the note when asked (one undo step). Replies go to the panel."""
+    card = mw.reviewer.card if mw.state == "review" and mw.reviewer else None
     if card is None or not request or not active(card):
+        S.panel.reply("Open a card with AI Study on to ask about it.", True)
         return
     cid, side, c = card.id, mw.reviewer.state, cfg()
     rules = deck_rules(card, c)
@@ -206,7 +206,7 @@ def ask(payload: str):
                                               ctx.get("questions", []), request, sel, rules)
 
         def on_hint(_cid, result, err):  # any "fields" are ignored: the question side never edits
-            show_ask_reply(cid, side, f"Failed: {err.message}" if err else result["reply"] or "…", bool(err))
+            S.panel.reply(f"Failed: {err.message}" if err else result["reply"] or "…", bool(err))
 
         edit_session().request(cid, prompt, grading.parse_edit_reply, c.get("grade_timeout_s", 60), on_hint)
         return
@@ -217,7 +217,7 @@ def ask(payload: str):
 
     def on_edited(_cid, result, err):
         if err:
-            show_ask_reply(cid, side, f"Failed: {err.message}", True)  # not counted toward disabling AI Study
+            S.panel.reply(f"Failed: {err.message}", True)  # not counted toward disabling AI Study
             return
         note = mw.col.get_note(nid)  # fresh: the Missed append may have saved in the meantime
         changes, unknown = grading.plan_field_edit(dict(note.items()), result["fields"])
@@ -225,27 +225,20 @@ def ask(payload: str):
         if unknown:
             reply += f" (ignored unknown fields: {', '.join(unknown)})"
         if not changes:
-            show_ask_reply(cid, side, reply, bool(unknown))
+            S.panel.reply(reply, bool(unknown))
             return
         for name, value in changes.items():
             note[name] = value
         done = f"{reply} Changed: {', '.join(changes)} — Edit → Undo reverts it."
-        S.ask_toast[cid] = (done, False)  # the redraw closes the box; the toast carries the reply
         (
             # No initiator: the reviewer sees a note change and redraws the card with the new text.
             update_note(parent=mw, note=note)
-            .success(lambda _: show_ask_reply(cid, side, done, False))
-            .failure(lambda e: show_ask_reply(cid, side, f"Not saved: {e}", True))
+            .success(lambda _: S.panel.reply(done))
+            .failure(lambda e: S.panel.reply(f"Not saved: {e}", True))
             .run_in_background()
         )
 
     edit_session().request(cid, prompt, grading.parse_edit_reply, c.get("grade_timeout_s", 60), on_edited)
-
-
-def show_ask_reply(card_id, side: str, text: str, err: bool):
-    """Show the reply if that card is still on screen, on the side it was asked from."""
-    if card_id == S.card_id and mw.reviewer.state == side:
-        eval_card(ui.ask_reply_js(text, err))
 
 
 def append_missed(missed: list):
@@ -276,6 +269,8 @@ def end_session(*_args):
         if getattr(S, name) is not None:
             getattr(S, name).close()
             setattr(S, name, None)
+    if S.panel is not None:
+        S.panel.reset()
     S.reset()
 
 
@@ -333,6 +328,7 @@ def on_sync_finished():
 
 def setup():
     S.page = ConfigPage(ADDON, end_session)
+    S.panel = AskPanel(ask)
     S.gen_page = GeneratePage(ADDON)
     setup_menu()
     gui_hooks.deck_browser_will_render_content.append(on_deck_browser)
