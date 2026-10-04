@@ -2,6 +2,10 @@
 
 What changed in each version, newest first. How the add-on works today is in [docs/spec.md](docs/spec.md).
 
+## Unreleased
+
+- The highlight-to-ask box no longer disappears when you click elsewhere on the card. It closes with its new **×** button, Esc, a new highlight, or another button.
+
 ## v1.32 — Settings sync between computers (2026-10-03)
 
 - Deck prompts, the per-deck AI Study and Rewrite question switches, Custom Generic Rules, timeouts and Missed append now sync with your collection through Anki's normal Sync. Provider, model and CLI paths stay per computer. Your existing settings are merged into the collection the first time the new version opens a profile (after its first sync), keeping anything another computer already set.
