@@ -4,6 +4,7 @@ What changed in each version, newest first. How the add-on works today is in [do
 
 ## Unreleased
 
+- Highlight-to-ask replies now put separate points on their own lines ("- " bullets, or 1. 2. 3. when order matters) instead of one run-on paragraph.
 - The highlight-to-ask box no longer disappears when you click elsewhere on the card. It closes with its new **×** button, Esc, a new highlight, or another button.
 
 ## v1.32 — Settings sync between computers (2026-10-03)
