@@ -3,6 +3,7 @@
 import html
 import json
 
+from . import grading
 from .textutil import rich
 
 CSS = """
@@ -35,7 +36,7 @@ CSS = """
 .ai-you.ai-you-marked { opacity: 1; } .ai-you.ai-you-wrong { color: #d33; opacity: 1; } .ai-you.ai-you-partial { color: #d97706; opacity: 1; }
 .ai-verdict .ai-claims { margin: 0.2em 0 0.3em 1.2em; padding: 0; white-space: normal; } .ai-claims li { margin: 0.15em 0; }
 .ai-why { opacity: 0.8; font-size: 0.92em; }
-.ai-mark-correct { color: #27864a; } .ai-mark-partial { color: #d97706; } .ai-mark-wrong { color: #d33; }
+.ai-mark-skipped { opacity: 0.6; } .ai-mark-correct { color: #27864a; } .ai-mark-partial { color: #d97706; } .ai-mark-wrong { color: #d33; }
 .ai-verdict ul { margin: 0.3em 0 0 1.2em; padding: 0; }
 </style>
 """
@@ -257,7 +258,7 @@ def display_items(items: list) -> list:
 def verdict_html(verdict: dict, questions: list, answers: list) -> str:
     """questions = what was asked (may be empty: cloze / ask failed); answers = one per box."""
     v = verdict["verdict"]
-    marks = {"correct": "✓", "partial": "~", "wrong": "✗"}
+    marks = {"correct": "✓", "partial": "~", "wrong": "✗", "skipped": "–"}
     per_q = verdict.get("per_question") or []
     rows = []
     if questions and len(per_q) == len(questions):
@@ -299,7 +300,9 @@ def _you_html(answer: str, verdict: str, parts) -> str:
             + (f'<span class="ai-why"> — {rich(p["why"])}</span>' if p["verdict"] != "correct" and p.get("why") else "")
             + "</li>" for p in parts)
         return f'<div class="ai-you ai-you-marked">You:<ul class="ai-claims">{items}</ul></div>'
-    return f'<div class="ai-you{_you_class(verdict)}">You: {html.escape(answer.strip() or "(blank)")}</div>'
+    if verdict == grading.SKIPPED or not answer.strip():
+        return '<div class="ai-you">You: (skipped)</div>'
+    return f'<div class="ai-you{_you_class(verdict)}">You: {html.escape(answer.strip())}</div>'
 
 def append_verdict_note_js(note: str) -> str:
     snippet = json.dumps(f'<div class="ai-err">{html.escape(note)}</div>')

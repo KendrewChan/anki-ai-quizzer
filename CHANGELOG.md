@@ -7,6 +7,7 @@ What changed in each version, newest first. How the add-on works today is in [do
 - Highlight-to-ask now opens a chat panel on the right instead of a popup. The window widens so the card doesn't move; the highlight is quoted above the chat box and kept above your message. The conversation stays across cards; **Clear** empties it. Replies put separate points on their own lines.
 - Anki's Add Cards window gets an **AI Study** button that opens a chat beside it about the note you're writing (answers only, only when AI Study is on).
 - Space and **Show Answer** now grade what you typed, like Enter, instead of just flipping the card. With nothing typed they just show the answer; after a failed grading, Space shows it.
+- A question left empty is now marked **skipped** (grey –) instead of wrong, and doesn't pull down the verdict or ease.
 - The Missed section counts how often each point is missed (`[3]` before the point, red when often) across reviews, matching rewordings of the same point.
 - AI chats mark your messages with `> ` and replies with `● `.
 - Internal: the prompt, Missed and note-chat code moved out of `grading.py` into `textutil.py`, `missed.py` and `note_chat.py`; the panel page into `panel_page.py`. No behaviour change.

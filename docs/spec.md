@@ -63,7 +63,7 @@ Only active while **AI Study** is ON, and only for cards whose home deck has AI 
 **Answer side**
 - A grade request returns `{"verdict": "wrong"|"partial"|"correct", "ease": 1-4, "feedback", "missed": [str], "per_question": [...]}`.
 - The full card is sent again, so grading works even if `ask` failed or was skipped.
-- The rubric is fixed: wrong 1, partial 2, correct 3, correct + complete and crisp 4. Missed bullets are short (the prompt caps hints, notes, whys and Missed items at about 15 words) and contain only reference facts the user left out.
+- A question left blank is marked **skipped**, not wrong: it doesn't lower the verdict or ease, which judge the answered questions. The rubric is fixed: wrong 1, partial 2, correct 3, correct + complete and crisp 4. Missed bullets are short (the prompt caps hints, notes, whys and Missed items at about 15 words) and contain only reference facts the user left out.
 - The verdict (badge, the user's answer, feedback, per-question marks, Missed bullets) is inserted just below the front of the card, right after `<hr id=answer>` (Anki scrolls it to the top), above the normal answer. Each `per_question` item carries `parts`: the user's answer clipped into claims in their own words, each with a verdict and, unless correct, a `why`. Colour follows verdict (green / orange / red); without parts the whole answer is coloured by its grade. Verdicts agree upward: a question is no better than its weakest claim, the card no better than its weakest question. The recommended ease button is outlined; the user presses a button themselves.
 
 **Highlight to ask** (both sides, whenever AI Study is on for the card)

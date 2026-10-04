@@ -18,13 +18,13 @@ Two kinds of message arrive:
    Reply: {"questions": ["<question>" or {"question": "<stem>", "parts": ["<part>", ...]}, ...], "hints": ["<hint>" or ["<hint per part>", ...], ...], "show_original": false}
 
 2. GRADE — the card again (question and reference answer) plus the user's answer to each question asked. Judge only against this card's reference answer, matching each answer to its own question.
-   - per_question, in order: the question's verdict, a note, and parts — the user's answer split into its claims, in their own words (filler trimmed, nothing added), each with a verdict and, unless correct, a "why": what is off and what is right. A blank answer is wrong, with no parts.
+   - per_question, in order: the question's verdict, a note, and parts — the user's answer split into its claims, in their own words (filler trimmed, nothing added), each with a verdict and, unless correct, a "why": what is off and what is right. A blank answer is "skipped", not wrong: no parts, and it does not lower the verdict or ease, which judge only the answered questions.
    - verdict (overall): "wrong" (core idea missing or incorrect), "partial" (core idea right, key facts missing), "correct" (all key facts). Verdicts agree upward: a question is no better than its weakest claim, and the card no better than its weakest question.
    - ease: wrong=1, partial=2, correct=3, correct and also complete and crisp=4.
    - feedback: one or two blunt sentences — fix what is wrong, add the most important missing piece. No praise.
    - missed: specific facts from the reference answer the user did not give. [] if none.
    The reference answer may end with a "Missed (date)" section: points the user has missed before, each starting with [N], how many reviews missed it (out of the reviews counted in the header). It is not required content. When the user misses a listed point again, put it in "missed" in that bullet's own words (without the [N]), and say so in feedback.
-   Reply: {"per_question": [{"verdict": "wrong"|"partial"|"correct", "note": "...", "parts": [{"text": "...", "verdict": "...", "why": "..."}, ...]}, ...], "verdict": "...", "ease": N, "feedback": "...", "missed": ["..."]}
+   Reply: {"per_question": [{"verdict": "wrong"|"partial"|"correct"|"skipped", "note": "...", "parts": [{"text": "...", "verdict": "...", "why": "..."}, ...]}, ...], "verdict": "...", "ease": N, "feedback": "...", "missed": ["..."]}
 
 Keep each hint, note, why and missed item short — about 15 words at most.
 
@@ -42,6 +42,7 @@ def system_prompt(custom: list) -> str:
     return f"{base}\n\nUser's general rules (follow them unless they conflict with the JSON reply format; a card's deck rules win over them):\n{listed}"
 
 VERDICTS = ("wrong", "partial", "correct")
+SKIPPED = "skipped"  # a question left blank; only per-question marks use it
 
 
 def split_answer(answer_html: str) -> tuple:
@@ -155,7 +156,7 @@ def parse_grade(text: str) -> dict:
             parts = pq.get("parts") if isinstance(pq.get("parts"), list) else []
             parts = [{"text": str(x.get("text", "")).strip(), "verdict": str(x.get("verdict", "")).lower(),
                       "why": str(x.get("why") or "").strip()} for x in parts if isinstance(x, dict)]
-            per_question.append({"verdict": v if v in VERDICTS else "partial", "note": str(pq.get("note", "")).strip(),
+            per_question.append({"verdict": v if v in VERDICTS + (SKIPPED,) else "partial", "note": str(pq.get("note", "")).strip(),
                                  "parts": [x for x in parts if x["text"] and x["verdict"] in VERDICTS]})
     return {
         "per_question": per_question,
