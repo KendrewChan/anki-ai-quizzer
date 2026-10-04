@@ -7,7 +7,7 @@
 import json
 
 from aqt import mw
-from aqt.qt import QDockWidget, QEvent, QObject, Qt, QVBoxLayout, QWidget
+from aqt.qt import QDockWidget, QEvent, QObject, Qt, QTimer, QVBoxLayout, QWidget
 from aqt.webview import AnkiWebView
 
 from . import grading, ui
@@ -91,6 +91,13 @@ class ReviewPanel:
         if self.grown:
             mw.resize(max(mw.minimumWidth(), mw.width() - self.grown), mw.height())
         self.grown = 0
+        QTimer.singleShot(0, self._focus_card)
+
+    @staticmethod
+    def _focus_card():
+        """Hand focus back to the card without letting the page pick a control (it would highlight "Show original")."""
+        mw.web.setFocus(Qt.FocusReason.OtherFocusReason)
+        mw.web.eval("document.activeElement && document.activeElement.blur && document.activeElement.blur();")
 
     def reset(self):
         """The review session ended: forget the conversation and give the width back."""
