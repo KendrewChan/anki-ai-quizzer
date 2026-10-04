@@ -90,8 +90,10 @@ def test_parse_questions_rejects_empty(reply):
         grading.parse_questions(reply)
 
 
-def test_missed_html_escapes():
-    assert grading.missed_html(["a<b"], "2026-10-02") == "<hr><b>Missed (2026-10-02)</b><ul><li>a&lt;b</li></ul>"
+def test_missed_html_shows_count_and_reviews():
+    assert grading.missed_html([("a&lt;b", 3)], "2026-10-02", 5) == (
+        "<hr><b>Missed (2026-10-02)</b> <i>5 reviews</i><ul><li>a&lt;b <i>×3</i></li></ul>")
+    assert grading.missed_html([("x", 1)], "D", 1).startswith("<hr><b>Missed (D)</b> <i>1 review</i>")
 
 
 @pytest.mark.parametrize("fields,expected", [
@@ -183,26 +185,43 @@ def test_answer_side_keeps_model_answer_plain():
 
 
 def test_missed_html_nothing():
-    assert grading.missed_html([], "2026-10-09") == "<hr><b>Missed (2026-10-09)</b>: nothing"
+    assert grading.missed_html([], "2026-10-09", 2) == "<hr><b>Missed (2026-10-09)</b> <i>2 reviews</i>: nothing"
 
 
-def test_replace_missed_keeps_only_latest_section():
-    back = ("<ul><li>real answer</li></ul>"
-            "<hr><b>Missed (2026-09-26)</b><ul><li>old one</li></ul>"
-            "<hr><b>Missed (2026-10-02)</b><ul><li>old two</li><li>x</li></ul>"
-            "<hr><b>Missed (2026-10-05)</b>: nothing")
-    out = grading.replace_missed(back, ["new"], "2026-10-09")
-    assert out == "<ul><li>real answer</li></ul><hr><b>Missed (2026-10-09)</b><ul><li>new</li></ul>"
+def test_replace_missed_counts_repeats_and_reviews():
+    back = "<ul><li>real answer</li></ul>"
+    one = grading.replace_missed(back, ["Leader **election** uses terms", "quorum"], "D1")
+    assert one == ("<ul><li>real answer</li></ul><hr><b>Missed (D1)</b> <i>1 review</i>"
+                   "<ul><li>Leader <b>election</b> uses terms <i>×1</i></li><li>quorum <i>×1</i></li></ul>")
+    two = grading.replace_missed(one, ["quorum", "leader election uses terms and votes", "new gap"], "D2")
+    reviews, items = grading.parse_missed(two)
+    assert reviews == 2
+    assert [(h, n) for h, n in items] == [("Leader <b>election</b> uses terms", 2), ("quorum", 2), ("new gap", 1)]
+    assert two.count("<hr>") == 1 and two.startswith("<ul><li>real answer</li></ul>")
 
 
-def test_replace_missed_clean_review_still_records_date():
-    out = grading.replace_missed("A<hr><b>Missed (2026-09-26)</b><ul><li>old</li></ul>", [], "2026-10-09")
-    assert out == "A<hr><b>Missed (2026-10-09)</b>: nothing"
+def test_replace_missed_clean_review_keeps_points_and_counts_the_review():
+    out = grading.replace_missed("A<hr><b>Missed (D1)</b> <i>2 reviews</i><ul><li>old <i>×2</i></li></ul>", [], "D3")
+    assert out == "A<hr><b>Missed (D3)</b> <i>3 reviews</i><ul><li>old <i>×2</i></li></ul>"
+    assert grading.replace_missed("A", [], "D") == "A<hr><b>Missed (D)</b> <i>1 review</i>: nothing"
+
+
+def test_replace_missed_reads_the_old_uncounted_format():
+    out = grading.replace_missed("A<hr><b>Missed (2026-09-26)</b><ul><li>old</li></ul>", ["old"], "D")
+    assert out == "A<hr><b>Missed (D)</b> <i>2 reviews</i><ul><li>old <i>×2</i></li></ul>"
 
 
 def test_replace_missed_tolerates_editor_reformatting_and_keeps_other_hr():
     back = "A<hr>B\n<hr />\n<b> Missed (2026-09-26) </b>\n<ul>\n<li>old</li>\n</ul>"
-    assert grading.replace_missed(back, ["n"], "D") == "A<hr>B<hr><b>Missed (D)</b><ul><li>n</li></ul>"
+    assert grading.replace_missed(back, ["n"], "D") == (
+        "A<hr>B<hr><b>Missed (D)</b> <i>2 reviews</i><ul><li>old <i>×1</i></li><li>n <i>×1</i></li></ul>")
+
+
+def test_missed_keeps_only_the_most_missed_points():
+    items = [(f"alpha{i} beta{i} gamma{i}", 1) for i in range(grading.MAX_MISSED)] + [("old favourite", 4)]
+    out = grading.merge_missed(items, ["unrelated brand new gap"])
+    assert len(out) == grading.MAX_MISSED and out[0] == ("old favourite", 4)
+    assert ("unrelated brand new gap", 1) not in out  # newest, but ties keep the older points
 
 
 def test_edit_prompt_has_fields_review_and_request():
@@ -239,7 +258,7 @@ def test_style_guide_in_every_system_prompt():
 
 def test_rich_escapes_and_bolds_keeps_latex():
     assert grading.rich("**key** <i> \\(x^2\\)") == "<b>key</b> &lt;i&gt; \\(x^2\\)"
-    assert grading.missed_html(["**a**"], "D") == "<hr><b>Missed (D)</b><ul><li><b>a</b></li></ul>"
+    assert "<li><b>a</b> <i>×1</i></li>" in grading.replace_missed("", ["**a**"], "D")
 
 
 def test_parse_json_reply_repairs_single_backslash_latex():

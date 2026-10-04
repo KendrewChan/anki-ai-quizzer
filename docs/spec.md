@@ -77,9 +77,10 @@ Only active while **AI Study** is ON, and only for cards whose home deck has AI 
 - Anki's Browser editor (updating existing cards) has no panel yet.
 
 **Missed section** (`missed_append`, default on)
-- After each graded review, the card's Missed section is **replaced** with exactly one `<hr><b>Missed (YYYY-MM-DD)</b><ul>…</ul>` (or `…</b>: nothing`).
+- After each graded review, the note keeps exactly one `<hr><b>Missed (YYYY-MM-DD)</b> <i>N reviews</i><ul><li>point <i>×K</i></li>…</ul>` (or `…</i>: nothing` while no point has been missed): the date of the latest review, how many graded reviews it counts, and for each point how many of them missed it. So "×3" under "5 reviews" is a frequency.
+- Each review reads the old section (`grading.parse_missed`), adds one to every point it missed again and the new ones as ×1, and counts itself in the header. Points a review didn't miss stay with their count. The tutor prompt tells the AI to reuse a listed point's own words when it's missed again; `grading.merge_missed` also matches by normalized words (same words, one inside the other, or at least 60% shared), so rewording doesn't start a second counter. Most-missed points come first; at most 12 are kept (the least-missed, then newest, drop off). A section written before counting existed counts as one review with each point ×1.
 - It goes into the first existing field of `Back` → `Back Extra` → the note's last field.
-- The tutor prompt treats it as past gaps, not required content.
+- The tutor prompt treats it as past gaps, not required content, and has the AI say in feedback when a point is missed again.
 - A write failure shows a red note; the review is unaffected.
 
 **Formatting** (`style.md`, `grading.rich`)
