@@ -27,7 +27,7 @@ Two kinds of message arrive:
    - ease: wrong=1, partial=2, correct=3, correct and also complete and crisp=4.
    - feedback: one or two blunt sentences — fix what is wrong, add the most important missing piece. No praise.
    - missed: specific facts from the reference answer the user did not give. [] if none.
-   The reference answer may end with a "Missed (date)" section: points the user has missed before, each with how many reviews missed it (×N, out of the reviews counted in the header). It is not required content. When the user misses a listed point again, put it in "missed" in that bullet's own words (without the ×N), and say so in feedback.
+   The reference answer may end with a "Missed (date)" section: points the user has missed before, each starting with [N], how many reviews missed it (out of the reviews counted in the header). It is not required content. When the user misses a listed point again, put it in "missed" in that bullet's own words (without the [N]), and say so in feedback.
    Reply: {"per_question": [{"verdict": "wrong"|"partial"|"correct", "note": "...", "parts": [{"text": "...", "verdict": "...", "why": "..."}, ...]}, ...], "verdict": "...", "ease": N, "feedback": "...", "missed": ["..."]}
 
 Keep each hint, note, why and missed item short — about 15 words at most.
@@ -227,16 +227,22 @@ MISSED_SECTION = re.compile(
 
 MAX_MISSED = 12  # points kept in a note's Missed section; the least-missed (then oldest) are dropped
 _LI = re.compile(r"<li>(.*?)</li>", re.I | re.S)
-_COUNT = re.compile(r"\s*<i>\s*×\s*(\d+)\s*</i>\s*$", re.I)
+_COUNT = re.compile(r"^\s*<b[^>]*>\s*\[(\d+)\]\s*</b>\s*", re.I)  # the count, as written in front of a point
+_OLD_COUNT = re.compile(r"\s*<i>\s*×\s*(\d+)\s*</i>\s*$", re.I)  # earlier versions put "×N" after it
+RED_FROM = 4  # a point missed this many times or more is marked red
 _REVIEWS = re.compile(r"<i>\s*(\d+)\s+reviews?\s*</i>", re.I)
 
 
+def _count_html(n: int) -> str:
+    return f'<b style="color:#d33">[{n}]</b>' if n >= RED_FROM else f"<b>[{n}]</b>"
+
+
 def missed_html(items: list, date: str, reviews: int = 1) -> str:
-    """items: [(html, times missed)]. The header counts the graded reviews, so "×3" among "5 reviews" is a frequency."""
+    """items: [(html, times missed)]. The header counts the graded reviews, so "[3]" among "5 reviews" is a frequency."""
     head = f"<hr><b>Missed ({date})</b> <i>{reviews} review{'s' if reviews != 1 else ''}</i>"
     if not items:
         return f"{head}: nothing"
-    return head + "<ul>" + "".join(f"<li>{h} <i>×{n}</i></li>" for h, n in items) + "</ul>"
+    return head + "<ul>" + "".join(f"<li>{_count_html(n)} {h}</li>" for h, n in items) + "</ul>"
 
 
 def parse_missed(field_html: str) -> tuple:
@@ -248,8 +254,8 @@ def parse_missed(field_html: str) -> tuple:
     r = _REVIEWS.search(m.group(0))
     items = []
     for li in _LI.findall(m.group(0)):
-        c = _COUNT.search(li)
-        items.append((_COUNT.sub("", li).strip(), int(c.group(1)) if c else 1))
+        c = _COUNT.search(li) or _OLD_COUNT.search(li)
+        items.append((_COUNT.sub("", _OLD_COUNT.sub("", li)).strip(), int(c.group(1)) if c else 1))
     return (int(r.group(1)) if r else 1), items
 
 
