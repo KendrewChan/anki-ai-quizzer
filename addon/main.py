@@ -5,6 +5,7 @@ import json
 import tempfile
 
 from anki.consts import MODEL_CLOZE
+from anki.hooks import wrap
 from aqt import gui_hooks, mw
 from aqt.deckbrowser import DeckBrowser
 from aqt.operations.note import update_note
@@ -30,6 +31,7 @@ class State:
         self.cwd = None
         self.page = None
         self.gen_page = None
+        self.bypass = False  # reveal() is showing the answer: don't intercept it
         self.panel = None  # side_panel.ReviewPanel: the highlight-to-ask chat
         self.action = None
         self.reset()
@@ -39,6 +41,7 @@ class State:
         self.card_id = None
         self.ctx = {}  # card_id -> {"q", "a", "questions"}
         self.verdicts = {}  # card_id -> (verdict, questions, answers)
+        self.no_grade = set()  # card ids whose grading failed: Space shows the answer instead of retrying
         self.failures = 0
         self.disabled = None  # reason string once AI is off for this session
 
@@ -115,8 +118,33 @@ def on_card_will_show(text: str, card, kind: str) -> str:
     return text + ui.ask_html() if active(card) else text
 
 
+def reveal():
+    """Show the answer without grading."""
+    S.bypass = True
+    try:
+        mw.reviewer._showAnswer()
+    finally:
+        S.bypass = False
+
+
+def around_show_answer(reviewer, *args, _old):
+    """Anki's Space and Show Answer: with AI Study on for the card they grade what is typed (blank boxes included)
+    instead of just flipping the card. Anything else keeps Anki's behaviour."""
+    card = reviewer.card
+    if (S.bypass or reviewer.state != "question" or card is None or card.id in S.no_grade
+            or card.id not in S.ctx or not active(card)):
+        return _old(reviewer, *args)
+
+    def on_page(result):
+        if result == "none":  # no answer boxes (rewritten questions still pending): behave as Anki does
+            reveal()
+
+    reviewer.web.evalWithCallback("window.aiStudy ? aiStudy.submitNow() : 'none'", on_page)
+
+
 def on_show_question(card):
     S.card_id = card.id
+    S.no_grade.discard(card.id)
     S.verdicts.pop(card.id, None)
     if not active(card):
         return
@@ -159,7 +187,7 @@ def on_js_message(handled, message: str, context):
         return handled
     if message == "aiStudy:reveal":
         if mw.reviewer.state == "question":
-            mw.reviewer._showAnswer()
+            reveal()
     elif message.startswith("aiStudy:submit:"):
         submit(message[len("aiStudy:submit:"):])
     elif message.startswith("aiStudy:open:"):
@@ -171,7 +199,7 @@ def submit(payload: str):
     card_id = S.card_id
     ctx = S.ctx.get(card_id)
     if ctx is None or not active():
-        mw.reviewer._showAnswer()
+        reveal()
         return
     answers = [str(a) for a in json.loads(payload)]
     questions = list(ctx["questions"])  # snapshot: what the user saw when submitting
@@ -181,11 +209,12 @@ def submit(payload: str):
         if cid != S.card_id or mw.reviewer.state != "question":
             return
         if err:
+            S.no_grade.add(cid)
             eval_card(ui.js_call("gradeFailed", on_error(err)))
             return
         S.failures = 0
         S.verdicts[cid] = (result, questions, answers)
-        mw.reviewer._showAnswer()
+        reveal()
         append_missed(result["missed"])
 
     session().request(card_id, prompt, grading.parse_grade, cfg().get("grade_timeout_s", 60), on_graded)
@@ -371,6 +400,7 @@ def setup():
     setup_menu()
     gui_hooks.deck_browser_will_render_content.append(on_deck_browser)
     gui_hooks.overview_will_render_content.append(on_overview)
+    Reviewer._showAnswer = wrap(Reviewer._showAnswer, around_show_answer, "around")
     gui_hooks.add_cards_did_init.append(on_add_cards_init)
     gui_hooks.card_will_show.append(on_card_will_show)
     gui_hooks.reviewer_did_show_question.append(on_show_question)
