@@ -55,7 +55,7 @@ Only active while **AI Study** is ON, and only for cards whose home deck has AI 
 - Cloze cards always use their own blanked question.
 - Layout: a collapsed **Show original** (Anki's normal question) at the top, then a question + answer box pair for each question. With rewritten questions, no box is shown until `ask` returns (only "Thinking of a rewritten question…"). If `ask` fails, one box appears under the opened original. Without rewritten questions (or for cloze), the original is shown with its box ready at once.
 - **Enter** moves to the next box; Enter in the last box submits all. **Shift+Enter** inserts a newline. Enter with every box empty shows the plain answer, with no verdict.
-- Anki shortcuts don't fire while typing. While `ask` is pending there is no box to type in, so Anki's own keys (e.g. Space to show the answer) still work.
+- Anki shortcuts don't fire while typing. Anki's own Space and the **Show Answer** button (`Reviewer._showAnswer`, wrapped by `main.around_show_answer`) grade too, with blank boxes sent as "(blank)": the page's `aiStudy.submitNow()` submits what is typed. While `ask` is pending there are no boxes, so they just show the answer, as does Enter with all boxes empty (the explicit skip). If grading fails, Space shows the answer instead of retrying. Only for cards with AI Study on; other cards keep Anki's behaviour.
 
 **Answer side**
 - A grade request returns `{"verdict": "wrong"|"partial"|"correct", "ease": 1-4, "feedback", "missed": [str], "per_question": [...]}`.
@@ -157,7 +157,7 @@ A main-window state (`aiStudyGenerate`). It works whether AI Study is on or off,
 
 ## Errors, self-check, fixes (`health.py`, `fixes.py`)
 
-A failure never blocks review: Space always works.
+A failure never blocks review: after a failed grading, Space shows the answer.
 
 | Failure | Shown | Behaviour |
 |---|---|---|
