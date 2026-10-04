@@ -1,4 +1,4 @@
-"""Anki wiring: reviewer hooks, pycmd bridge, Missed append, main-page toggle + settings link."""
+"""Anki wiring: reviewer hooks, pycmd bridge, side-panel chats, Missed append, main-page toggle + settings link."""
 
 import datetime
 import json
@@ -13,12 +13,13 @@ from aqt.overview import Overview
 from aqt.qt import QAction, QDialogButtonBox
 from aqt.reviewer import Reviewer
 
-from . import config_ops, grading, health, state, ui
+from . import config_ops, grading, health, missed, note_chat, state, ui
 from .chat_page import deck_ids, load_config, migrate_once
 from .config_page import ConfigPage
 from .generate_page import GeneratePage
 from .session import make_backend, provider_of
 from .side_panel import AddPanel, ReviewPanel
+from .textutil import strip_html
 
 ADDON = __name__.split(".")[0]
 
@@ -64,7 +65,7 @@ def session():
 def edit_session():
     if S.edit_session is None:
         S.cwd = S.cwd or tempfile.mkdtemp(prefix="anki_ai_")
-        S.edit_session = make_backend(cfg(), grading.EDIT_SYSTEM_PROMPT, S.cwd, mw.taskman.run_on_main)
+        S.edit_session = make_backend(cfg(), note_chat.EDIT_SYSTEM_PROMPT, S.cwd, mw.taskman.run_on_main)
     return S.edit_session
 
 
@@ -148,8 +149,8 @@ def on_show_question(card):
     S.verdicts.pop(card.id, None)
     if not active(card):
         return
-    q = grading.strip_html(card.question())
-    a = grading.strip_html(grading.answer_only(card.answer()))
+    q = strip_html(card.question())
+    a = strip_html(grading.answer_only(card.answer()))
     c = cfg()
     rules = deck_rules(card, c)
     S.ctx[card.id] = {"q": q, "a": a, "questions": [], "rules": rules}
@@ -220,6 +221,13 @@ def submit(payload: str):
     session().request(card_id, prompt, grading.parse_grade, cfg().get("grade_timeout_s", 60), on_graded)
 
 
+def reply_only(panel):
+    """Callback for chats that only answer: any "fields" in the reply are ignored."""
+    def on_reply(_cid, result, err):
+        panel.reply(f"Failed: {err.message}" if err else result["reply"] or "…", bool(err))
+    return on_reply
+
+
 def ask(sel: str, request: str):
     """Highlight-to-ask from the side panel, about the card on screen. Question side: help without the answer, never
     edits. Answer side: answer questions and change the note when asked (one undo step). Replies go to the panel."""
@@ -227,29 +235,33 @@ def ask(sel: str, request: str):
     if card is None or not request or not active(card):
         S.panel.reply("Open a card with AI Study on to ask about it.", True)
         return
-    cid, side, c = card.id, mw.reviewer.state, cfg()
-    rules = deck_rules(card, c)
-    if side == "question":
-        ctx = S.ctx.get(cid) or {}
-        prompt = grading.question_side_prompt(ctx.get("q") or grading.strip_html(card.question()),
-                                              ctx.get("questions", []), request, sel, rules)
+    if mw.reviewer.state == "question":
+        ask_question_side(card, sel, request)
+    else:
+        ask_answer_side(card, sel, request)
 
-        def on_hint(_cid, result, err):  # any "fields" are ignored: the question side never edits
-            S.panel.reply(f"Failed: {err.message}" if err else result["reply"] or "…", bool(err))
 
-        edit_session().request(cid, prompt, grading.parse_edit_reply, c.get("grade_timeout_s", 60), on_hint)
-        return
+def ask_question_side(card, sel: str, request: str):
+    ctx = S.ctx.get(card.id) or {}
+    prompt = note_chat.question_side_prompt(ctx.get("q") or strip_html(card.question()),
+                                            ctx.get("questions", []), request, sel, deck_rules(card, cfg()))
+    edit_session().request(card.id, prompt, note_chat.parse_edit_reply, cfg().get("grade_timeout_s", 60),
+                           reply_only(S.panel))
+
+
+def ask_answer_side(card, sel: str, request: str):
+    cid, c = card.id, cfg()
     verdict, questions, answers = S.verdicts.get(cid, (None, [], []))
     note = card.note()
     nid = note.id
-    prompt = grading.edit_prompt(dict(note.items()), request, questions, answers, verdict, rules, sel)
+    prompt = note_chat.edit_prompt(dict(note.items()), request, questions, answers, verdict, deck_rules(card, c), sel)
 
     def on_edited(_cid, result, err):
         if err:
             S.panel.reply(f"Failed: {err.message}", True)  # not counted toward disabling AI Study
             return
         note = mw.col.get_note(nid)  # fresh: the Missed append may have saved in the meantime
-        changes, unknown = grading.plan_field_edit(dict(note.items()), result["fields"])
+        changes, unknown = note_chat.plan_field_edit(dict(note.items()), result["fields"])
         reply = result["reply"] or ("Done." if changes else "No change.")
         if unknown:
             reply += f" (ignored unknown fields: {', '.join(unknown)})"
@@ -267,7 +279,7 @@ def ask(sel: str, request: str):
             .run_in_background()
         )
 
-    edit_session().request(cid, prompt, grading.parse_edit_reply, c.get("grade_timeout_s", 60), on_edited)
+    edit_session().request(cid, prompt, note_chat.parse_edit_reply, c.get("grade_timeout_s", 60), on_edited)
 
 
 def on_add_cards_init(addcards):
@@ -298,25 +310,21 @@ def ask_new(addcards, panel, sel: str, request: str):
         c = cfg()
         did = addcards.deck_chooser.selected_deck_id
         rules = config_ops.deck_chain(mw.col.decks.name(did), deck_ids(), c.get("deck_prompts") or {})
-        prompt = grading.new_note_prompt(dict(note.items()) if note else {}, request, sel, rules)
-
-        def on_reply(_cid, result, err):  # any "fields" are ignored: nothing here edits
-            panel.reply(f"Failed: {err.message}" if err else result["reply"] or "…", bool(err))
-
-        edit_session().request(0, prompt, grading.parse_edit_reply, c.get("grade_timeout_s", 60), on_reply)
+        prompt = note_chat.new_note_prompt(dict(note.items()) if note else {}, request, sel, rules)
+        edit_session().request(0, prompt, note_chat.parse_edit_reply, c.get("grade_timeout_s", 60), reply_only(panel))
 
     addcards.editor.call_after_note_saved(go)  # the field being typed in counts too
 
 
-def append_missed(missed: list):
+def append_missed(bullets: list):
     """Replace the card's Missed section with this review's misses (or "nothing") + today's date."""
     if not config_ops.toggle_on(cfg(), "missed_append"):
         return
     note = mw.reviewer.card.note()
-    field = grading.pick_missed_field(list(note.keys()))
+    field = missed.pick_missed_field(list(note.keys()))
     if field is None:
         return
-    note[field] = grading.replace_missed(note[field], missed, datetime.date.today().isoformat())
+    note[field] = missed.replace_missed(note[field], bullets, datetime.date.today().isoformat())
     (
         update_note(parent=mw, note=note)
         .failure(lambda e: eval_card(ui.append_verdict_note_js(f"Missed notes not saved: {e}")))

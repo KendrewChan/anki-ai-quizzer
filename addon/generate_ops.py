@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 
 from .config_ops import resolve_deck
-from .grading import STYLE_GUIDE, parse_json_reply
+from .textutil import STYLE_GUIDE, parse_json_reply
 
 TEMP_DECK = "AI-GEN"
 MAX_REF_CHARS = 150_000  # all reference text sent per message

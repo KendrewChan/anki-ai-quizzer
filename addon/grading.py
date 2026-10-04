@@ -1,12 +1,8 @@
-"""Prompts, reply parsing and note-field helpers. No Anki imports — unit-testable."""
+"""The study tutor: its system prompt, the ask / grade prompts and parsing their replies. No Anki imports."""
 
-import html
-import json
 import re
-from pathlib import Path
 
-# How the AI formats text (bold, HTML fields, LaTeX); appended to every system prompt.
-STYLE_GUIDE = Path(__file__).with_name("style.md").read_text(encoding="utf-8").strip()
+from .textutil import STYLE_GUIDE, parse_json_reply
 
 SYSTEM_PROMPT = """You are a strict flashcard tutor inside Anki. The user studies one card at a time; this whole conversation is one study session.
 
@@ -45,19 +41,7 @@ def system_prompt(custom: list) -> str:
     listed = "\n".join(f"- {r}" for r in rules)
     return f"{base}\n\nUser's general rules (follow them unless they conflict with the JSON reply format; a card's deck rules win over them):\n{listed}"
 
-
-
 VERDICTS = ("wrong", "partial", "correct")
-
-
-def strip_html(text: str) -> str:
-    """Rendered card HTML -> plain text."""
-    text = re.sub(r"(?is)<(style|script)\b.*?</\1>", " ", text)
-    text = re.sub(r"(?i)<br\s*/?>|</(p|div|li|tr|h\d)>", "\n", text)
-    text = re.sub(r"<[^>]+>", " ", text)
-    text = html.unescape(text)
-    text = re.sub(r"[ \t ]+", " ", text)
-    return re.sub(r"\s*\n\s*", "\n", text).strip()
 
 
 def split_answer(answer_html: str) -> tuple:
@@ -91,55 +75,18 @@ def grade_prompt(question: str, asked: list, answer: str, user_answers: list, de
     asked = asked or [question]
     pairs = "\n\n".join(
         f"Q{i}: {q}\nUser's answer {i}: {a.strip() or '(blank)'}"
-        for i, (q, a) in enumerate(zip(asked, _pad(user_answers, len(asked))), 1)
+        for i, (q, a) in enumerate(zip(asked, pad(user_answers, len(asked))), 1)
     )
     return (f"GRADE\n\nCard question:\n{question}\n\nReference answer:\n{answer}"
             f"{deck_rules_block(deck_rules)}\n\n{pairs}")
 
 
-def _pad(items: list, n: int) -> list:
+def pad(items: list, n: int) -> list:
     """Fit the answers to n questions: pad with blanks, fold any extras into the last."""
     items = list(items)
     if len(items) > n:
         items = items[:n - 1] + ["\n".join(items[n - 1:])]
     return items + [""] * (n - len(items))
-
-
-def parse_json_reply(text: str) -> dict:
-    """Extract the first JSON object from a model reply (tolerates code fences / stray prose)."""
-    start = text.find("{")
-    end = text.rfind("}")
-    if start == -1 or end < start:
-        raise ValueError(f"no JSON object in reply: {text[:200]!r}")
-    raw = text[start:end + 1]
-    try:
-        obj = json.loads(raw)
-    except json.JSONDecodeError:
-        # LaTeX written with single backslashes (\( \sqrt …) is invalid JSON: double the stray ones and retry.
-        obj = json.loads(re.sub(r"\\(.)", lambda m: m.group(0) if m.group(1) in '"\\/bfnrtu' else "\\\\" + m.group(1),
-                                raw, flags=re.S))
-    if not isinstance(obj, dict):
-        raise ValueError("reply JSON is not an object")
-    return _fix_latex(obj)
-
-
-_LATEX_CTRL = {"\b": "\\b", "\f": "\\f", "\t": "\\t", "\r": "\\r"}
-
-
-def _fix_latex(value):
-    """Single-backslash \\frac, \\times, \\beta, \\right parse as control characters: turn them back into LaTeX."""
-    if isinstance(value, str):
-        return re.sub(r"[\b\f\t\r](?=[A-Za-z])", lambda m: _LATEX_CTRL[m.group()], value)
-    if isinstance(value, list):
-        return [_fix_latex(v) for v in value]
-    if isinstance(value, dict):
-        return {k: _fix_latex(v) for k, v in value.items()}
-    return value
-
-
-def rich(text: str) -> str:
-    """AI short text -> safe HTML: escaped, **bold** -> <b>. LaTeX \\( \\) passes through for Anki's MathJax."""
-    return re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", html.escape(text))
 
 
 MAX_QUESTIONS = 8  # the prompt asks for at most 4 unless deck rules want more
@@ -217,150 +164,3 @@ def parse_grade(text: str) -> dict:
         "feedback": str(obj.get("feedback", "")).strip(),
         "missed": [str(m).strip() for m in missed if str(m).strip()],
     }
-
-
-# A Missed section as written by this add-on (tolerant of editor reformatting).
-MISSED_SECTION = re.compile(
-    r"\s*<hr[^>]*>\s*<b>\s*Missed\s*\([^)]*\)\s*</b>(?:\s*<i>[^<]*reviews?\s*</i>)?\s*(?::\s*nothing|<ul>.*?</ul>)?", re.I | re.S
-)
-
-
-MAX_MISSED = 12  # points kept in a note's Missed section; the least-missed (then oldest) are dropped
-_LI = re.compile(r"<li>(.*?)</li>", re.I | re.S)
-_COUNT = re.compile(r"^\s*<b[^>]*>\s*\[(\d+)\]\s*</b>\s*", re.I)  # the count, as written in front of a point
-_OLD_COUNT = re.compile(r"\s*<i>\s*×\s*(\d+)\s*</i>\s*$", re.I)  # earlier versions put "×N" after it
-RED_FROM = 3  # a point missed this many times or more is marked red
-_REVIEWS = re.compile(r"<i>\s*(\d+)\s+reviews?\s*</i>", re.I)
-
-
-def _count_html(n: int) -> str:
-    return f'<b style="color:#d33">[{n}]</b>' if n >= RED_FROM else f"<b>[{n}]</b>"
-
-
-def missed_html(items: list, date: str, reviews: int = 1) -> str:
-    """items: [(html, times missed)]. The header counts the graded reviews, so "[3]" among "5 reviews" is a frequency."""
-    head = f"<hr><b>Missed ({date})</b> <i>{reviews} review{'s' if reviews != 1 else ''}</i>"
-    if not items:
-        return f"{head}: nothing"
-    return head + "<ul>" + "".join(f"<li>{_count_html(n)} {h}</li>" for h, n in items) + "</ul>"
-
-
-def parse_missed(field_html: str) -> tuple:
-    """(reviews, [(html, count)]) from the note's Missed section; (0, []) if it has none. A section written before
-    counting existed counts as one review with each point missed once."""
-    m = MISSED_SECTION.search(field_html)
-    if not m:
-        return 0, []
-    r = _REVIEWS.search(m.group(0))
-    items = []
-    for li in _LI.findall(m.group(0)):
-        c = _COUNT.search(li) or _OLD_COUNT.search(li)
-        items.append((_COUNT.sub("", _OLD_COUNT.sub("", li)).strip(), int(c.group(1)) if c else 1))
-    return (int(r.group(1)) if r else 1), items
-
-
-def _words(text: str) -> set:
-    return set(re.findall(r"\w+", html.unescape(re.sub(r"<[^>]+>", " ", text)).lower()))
-
-
-def _same_point(a: str, b: str) -> bool:
-    """The same missed point worded alike: equal words, one inside the other, or mostly shared words."""
-    x, y = _words(a), _words(b)
-    if not x or not y:
-        return False
-    return x <= y or y <= x or len(x & y) / len(x | y) >= 0.6
-
-
-def merge_missed(items: list, bullets: list) -> list:
-    """Add one miss for each of this review's bullets: to the point already listed, else as a new one."""
-    items, seen = list(items), set()
-    for b in bullets:
-        k = next((i for i, (h, _) in enumerate(items) if i not in seen and _same_point(h, b)), None)
-        if k is None:
-            items.append((rich(b), 1))
-            seen.add(len(items) - 1)
-        else:
-            items[k] = (items[k][0], items[k][1] + 1)
-            seen.add(k)
-    items = sorted(items, key=lambda it: -it[1])  # stable: ties keep the older point first
-    return items[:MAX_MISSED]
-
-
-def replace_missed(field_html: str, bullets: list, date: str) -> str:
-    """Keep exactly one Missed section: each point with how many reviews missed it, out of all graded reviews."""
-    reviews, items = parse_missed(field_html)
-    return (MISSED_SECTION.sub("", field_html).rstrip()
-            + missed_html(merge_missed(items, bullets), date, reviews + 1))
-
-
-def pick_missed_field(field_names: list):
-    """Back -> Back Extra -> last field. None if the note has no fields."""
-    for name in ("Back", "Back Extra"):
-        if name in field_names:
-            return name
-    return field_names[-1] if field_names else None
-
-EDIT_SYSTEM_PROMPT = """You help the user with one Anki note while they review it: they highlight part of the card and ask about it, or ask you to change the note. Never touch any other note. Each message says which side of the card the user is on and, under "Highlighted", the text they selected — their message is about that text.
-
-QUESTION SIDE: they haven't answered yet, and you get only the card's question. Help them understand what is asked (a term, the wording, the scope) without giving away the answer or anything that would let them skip recalling it. Never change the note: "fields" is always {}.
-
-ANSWER SIDE: you get the note's fields (raw HTML) and, when they were graded, what they were asked and answered and the grade.
-- A question: answer it in "reply" — clear and to the point, at most about 120 words — and change nothing, even if the answer shows a gap in the card (you may suggest adding it).
-- A change request: change only what it asks for; keep each field's existing HTML style. "reply" says in one short sentence what you changed.
-- Both in one message: do both.
-- A field may end with a "Missed (date)" section the add-on maintains — leave it as it is unless the user asks about it. If a change request is unclear, change nothing and ask in "reply".
-
-NEW NOTE: the user is writing a note that isn't saved yet, and you get its fields so far. Answer their question about it (wording, what belongs on the back, splitting it into cards, accuracy) in "reply", at most about 120 words. Never change anything: "fields" is always {}.
-
-Deck rules, when given, take priority over everything else here (including the formatting guide) except the JSON reply format.
-
-Reply with JSON only, no code fences:
-{"reply": "<your answer, or what you changed>", "fields": {"<field name>": "<the whole new field HTML>", ...}}
-Include only the fields you change; {} for none."""
-EDIT_SYSTEM_PROMPT += "\n\n" + STYLE_GUIDE
-
-
-def _highlighted(selection: str) -> str:
-    return f"\n\nHighlighted:\n{selection.strip()}" if selection.strip() else ""
-
-
-def edit_prompt(fields: dict, request: str, questions: list, answers: list, verdict=None,
-                deck_rules: list = (), selection: str = "") -> str:
-    """Answer side. fields: field name -> raw HTML of the note right now; verdict None = not graded."""
-    note = "\n\n".join(f"[{name}]\n{value}" for name, value in fields.items())
-    review = ""
-    if verdict:
-        asked = questions or ["(the card's own question)"]
-        pairs = "\n".join(f"Q: {q}\nUser: {a.strip() or '(blank)'}" for q, a in zip(asked, _pad(answers, len(asked))))
-        review = f"\n\nReview:\n{pairs}\nGrade: {verdict.get('verdict')} — {verdict.get('feedback', '')}"
-    return (f"ANSWER SIDE\n\nNOTE FIELDS\n\n{note}{deck_rules_block(deck_rules)}{review}"
-            f"{_highlighted(selection)}\n\nUser's request:\n{request}")
-
-
-def new_note_prompt(fields: dict, request: str, selection: str = "", deck_rules: list = ()) -> str:
-    """Add Cards window: the note as typed so far (field name -> HTML)."""
-    note = "\n\n".join(f"[{name}]\n{value}" for name, value in fields.items()) or "(empty)"
-    return (f"NEW NOTE\n\nFIELDS SO FAR\n\n{note}{deck_rules_block(deck_rules)}"
-            f"{_highlighted(selection)}\n\nUser's request:\n{request}")
-
-
-def question_side_prompt(question: str, questions: list, request: str, selection: str = "", deck_rules: list = ()) -> str:
-    """Question side: only what the user can see — never the answer."""
-    shown = "".join(f"\n- {q}" for q in questions)
-    shown = f"\n\nQuestions shown to the user:{shown}" if shown else ""
-    return (f"QUESTION SIDE\n\nCard's question:\n{question}{shown}{deck_rules_block(deck_rules)}"
-            f"{_highlighted(selection)}\n\nUser's request:\n{request}")
-
-
-def parse_edit_reply(text: str) -> dict:
-    obj = parse_json_reply(text)
-    fields = obj.get("fields") or {}
-    if not isinstance(fields, dict):
-        raise ValueError("'fields' is not an object")
-    return {"reply": str(obj.get("reply", "")).strip(), "fields": {str(k): str(v) for k, v in fields.items()}}
-
-
-def plan_field_edit(current: dict, proposed: dict) -> tuple:
-    """(changes, rejected): changes = fields that exist and actually differ; rejected = unknown field names."""
-    changes = {k: v for k, v in proposed.items() if k in current and v != current[k]}
-    return changes, [k for k in proposed if k not in current]

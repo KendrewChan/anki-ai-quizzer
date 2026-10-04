@@ -5,7 +5,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from addon import config_ops, grading  # noqa: E402
+from addon import config_ops, grading, note_chat, textutil  # noqa: E402
 
 BASE = {"claude_path": "/bin/claude", "models": {"claude": "sonnet", "codex": ""}, "missed_append": True,
         "ask_timeout_s": 30, "grade_timeout_s": 60, "custom": []}
@@ -86,7 +86,7 @@ def test_config_prompt_lists_settings_rules_and_login():
 
 
 def test_tutor_system_prompt_appends_custom_rules():
-    assert grading.system_prompt([]) == f"{grading.SYSTEM_PROMPT}\n\n{grading.STYLE_GUIDE}"
+    assert grading.system_prompt([]) == f"{grading.SYSTEM_PROMPT}\n\n{textutil.STYLE_GUIDE}"
     sp = grading.system_prompt(["grade strictly", " "])
     assert sp.startswith(grading.SYSTEM_PROMPT) and sp.endswith("- grade strictly")
 
@@ -229,7 +229,7 @@ def test_toggle_flips_and_defaults_on():
 def test_deck_rules_outrank_general_rules():
     sp = grading.system_prompt(["grade strictly"])
     assert "Priority: deck rules, then the user's general rules, then everything above" in sp
-    assert "a card's deck rules win over them" in sp and "Deck rules, when given, take priority" in grading.EDIT_SYSTEM_PROMPT
+    assert "a card's deck rules win over them" in sp and "Deck rules, when given, take priority" in note_chat.EDIT_SYSTEM_PROMPT
 
 
 def test_ask_mode_deck_prompt_applies_with_sharp_off():
