@@ -5,13 +5,13 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from addon import grading  # noqa: E402
-from addon import ui  # noqa: E402
+from addon import grading, missed, note_chat, textutil  # noqa: E402
+from addon import panel_page, ui  # noqa: E402
 
 
 def test_strip_html_drops_style_script_tags_and_entities():
     html = "<style>.card{x:1}</style><div>Kafka&nbsp;ordering</div><script>alert(1)</script><br>by key &amp; partition"
-    assert grading.strip_html(html) == "Kafka ordering\nby key & partition"
+    assert textutil.strip_html(html) == "Kafka ordering\nby key & partition"
 
 
 def test_answer_only_keeps_text_after_answer_hr():
@@ -91,9 +91,9 @@ def test_parse_questions_rejects_empty(reply):
 
 
 def test_missed_html_shows_count_and_reviews():
-    assert grading.missed_html([("a&lt;b", 2)], "2026-10-02", 5) == (
+    assert missed.missed_html([("a&lt;b", 2)], "2026-10-02", 5) == (
         "<hr><b>Missed (2026-10-02)</b> <i>5 reviews</i><ul><li><b>[2]</b> a&lt;b</li></ul>")
-    assert grading.missed_html([("x", 1)], "D", 1).startswith("<hr><b>Missed (D)</b> <i>1 review</i>")
+    assert missed.missed_html([("x", 1)], "D", 1).startswith("<hr><b>Missed (D)</b> <i>1 review</i>")
 
 
 @pytest.mark.parametrize("fields,expected", [
@@ -103,7 +103,7 @@ def test_missed_html_shows_count_and_reviews():
     ([], None),
 ])
 def test_pick_missed_field(fields, expected):
-    assert grading.pick_missed_field(fields) == expected
+    assert missed.pick_missed_field(fields) == expected
 
 
 def test_grade_prompt_pairs_each_answer_with_its_question():
@@ -185,67 +185,67 @@ def test_answer_side_keeps_model_answer_plain():
 
 
 def test_missed_html_nothing():
-    assert grading.missed_html([], "2026-10-09", 2) == "<hr><b>Missed (2026-10-09)</b> <i>2 reviews</i>: nothing"
+    assert missed.missed_html([], "2026-10-09", 2) == "<hr><b>Missed (2026-10-09)</b> <i>2 reviews</i>: nothing"
 
 
 def test_replace_missed_counts_repeats_and_reviews():
     back = "<ul><li>real answer</li></ul>"
-    one = grading.replace_missed(back, ["Leader **election** uses terms", "quorum"], "D1")
+    one = missed.replace_missed(back, ["Leader **election** uses terms", "quorum"], "D1")
     assert one == ("<ul><li>real answer</li></ul><hr><b>Missed (D1)</b> <i>1 review</i>"
                    "<ul><li><b>[1]</b> Leader <b>election</b> uses terms</li><li><b>[1]</b> quorum</li></ul>")
-    two = grading.replace_missed(one, ["quorum", "leader election uses terms and votes", "new gap"], "D2")
-    reviews, items = grading.parse_missed(two)
+    two = missed.replace_missed(one, ["quorum", "leader election uses terms and votes", "new gap"], "D2")
+    reviews, items = missed.parse_missed(two)
     assert reviews == 2
     assert [(h, n) for h, n in items] == [("Leader <b>election</b> uses terms", 2), ("quorum", 2), ("new gap", 1)]
     assert two.count("<hr>") == 1 and two.startswith("<ul><li>real answer</li></ul>")
 
 
 def test_replace_missed_clean_review_keeps_points_and_counts_the_review():
-    out = grading.replace_missed("A<hr><b>Missed (D1)</b> <i>2 reviews</i><ul><li><b>[2]</b> old</li></ul>", [], "D3")
+    out = missed.replace_missed("A<hr><b>Missed (D1)</b> <i>2 reviews</i><ul><li><b>[2]</b> old</li></ul>", [], "D3")
     assert out == "A<hr><b>Missed (D3)</b> <i>3 reviews</i><ul><li><b>[2]</b> old</li></ul>"
-    assert grading.replace_missed("A", [], "D") == "A<hr><b>Missed (D)</b> <i>1 review</i>: nothing"
+    assert missed.replace_missed("A", [], "D") == "A<hr><b>Missed (D)</b> <i>1 review</i>: nothing"
 
 
 def test_missed_count_turns_red_from_three_and_old_suffix_format_is_read():
-    out = grading.replace_missed("A<hr><b>Missed (D)</b> <i>5 reviews</i><ul><li>hot <i>×2</i></li><li>mild <i>×1</i></li></ul>", ["hot", "mild"], "E")
+    out = missed.replace_missed("A<hr><b>Missed (D)</b> <i>5 reviews</i><ul><li>hot <i>×2</i></li><li>mild <i>×1</i></li></ul>", ["hot", "mild"], "E")
     assert '<li><b style="color:#d33">[3]</b> hot</li>' in out and "<li><b>[2]</b> mild</li>" in out
-    assert grading.parse_missed(out) == (6, [("hot", 3), ("mild", 2)])
+    assert missed.parse_missed(out) == (6, [("hot", 3), ("mild", 2)])
 
 
 def test_replace_missed_reads_the_old_uncounted_format():
-    out = grading.replace_missed("A<hr><b>Missed (2026-09-26)</b><ul><li>old</li></ul>", ["old"], "D")
+    out = missed.replace_missed("A<hr><b>Missed (2026-09-26)</b><ul><li>old</li></ul>", ["old"], "D")
     assert out == "A<hr><b>Missed (D)</b> <i>2 reviews</i><ul><li><b>[2]</b> old</li></ul>"
 
 
 def test_replace_missed_tolerates_editor_reformatting_and_keeps_other_hr():
     back = "A<hr>B\n<hr />\n<b> Missed (2026-09-26) </b>\n<ul>\n<li>old</li>\n</ul>"
-    assert grading.replace_missed(back, ["n"], "D") == (
+    assert missed.replace_missed(back, ["n"], "D") == (
         "A<hr>B<hr><b>Missed (D)</b> <i>2 reviews</i><ul><li><b>[1]</b> old</li><li><b>[1]</b> n</li></ul>")
 
 
 def test_missed_keeps_only_the_most_missed_points():
-    items = [(f"alpha{i} beta{i} gamma{i}", 1) for i in range(grading.MAX_MISSED)] + [("old favourite", 4)]
-    out = grading.merge_missed(items, ["unrelated brand new gap"])
-    assert len(out) == grading.MAX_MISSED and out[0] == ("old favourite", 4)
+    items = [(f"alpha{i} beta{i} gamma{i}", 1) for i in range(missed.MAX_MISSED)] + [("old favourite", 4)]
+    out = missed.merge_missed(items, ["unrelated brand new gap"])
+    assert len(out) == missed.MAX_MISSED and out[0] == ("old favourite", 4)
     assert ("unrelated brand new gap", 1) not in out  # newest, but ties keep the older points
 
 
 def test_edit_prompt_has_fields_review_and_request():
     v = {"verdict": "wrong", "feedback": "Missed the key part."}
-    p = grading.edit_prompt({"Front": "Q?", "Back": "<b>A</b>"}, "fix the typo", ["Q1"], ["my ans"], v,
+    p = note_chat.edit_prompt({"Front": "Q?", "Back": "<b>A</b>"}, "fix the typo", ["Q1"], ["my ans"], v,
                             [("Deck", "be terse")])
     assert "[Front]\nQ?" in p and "[Back]\n<b>A</b>" in p and "Q: Q1\nUser: my ans" in p
     assert "Grade: wrong — Missed the key part." in p and p.endswith("fix the typo") and "be terse" in p
 
 
 def test_parse_edit_reply_and_plan():
-    r = grading.parse_edit_reply('```json\n{"reply": "Fixed.", "fields": {"Back": "B2", "Nope": "x", "Front": "Q"}}\n```')
+    r = note_chat.parse_edit_reply('```json\n{"reply": "Fixed.", "fields": {"Back": "B2", "Nope": "x", "Front": "Q"}}\n```')
     assert r["reply"] == "Fixed."
-    changes, unknown = grading.plan_field_edit({"Front": "Q", "Back": "B"}, r["fields"])
+    changes, unknown = note_chat.plan_field_edit({"Front": "Q", "Back": "B"}, r["fields"])
     assert changes == {"Back": "B2"} and unknown == ["Nope"]
-    assert grading.parse_edit_reply('{"reply": "Unclear."}') == {"reply": "Unclear.", "fields": {}}
+    assert note_chat.parse_edit_reply('{"reply": "Unclear."}') == {"reply": "Unclear.", "fields": {}}
     with pytest.raises(ValueError):
-        grading.parse_edit_reply('{"fields": ["x"]}')
+        note_chat.parse_edit_reply('{"fields": ["x"]}')
 
 
 def test_verdict_html_has_no_ask_box():
@@ -256,20 +256,20 @@ def test_verdict_html_has_no_ask_box():
 
 def test_style_guide_in_every_system_prompt():
     from addon import generate_ops
-    assert "\\( ... \\)" in grading.STYLE_GUIDE
-    for prompt in (grading.system_prompt([]), grading.system_prompt(["be terse"]), grading.EDIT_SYSTEM_PROMPT,
+    assert "\\( ... \\)" in textutil.STYLE_GUIDE
+    for prompt in (grading.system_prompt([]), grading.system_prompt(["be terse"]), note_chat.EDIT_SYSTEM_PROMPT,
                    generate_ops.GENERATE_SYSTEM_PROMPT):
-        assert grading.STYLE_GUIDE in prompt
+        assert textutil.STYLE_GUIDE in prompt
 
 
 def test_rich_escapes_and_bolds_keeps_latex():
-    assert grading.rich("**key** <i> \\(x^2\\)") == "<b>key</b> &lt;i&gt; \\(x^2\\)"
-    assert "<li><b>[1]</b> <b>a</b></li>" in grading.replace_missed("", ["**a**"], "D")
+    assert textutil.rich("**key** <i> \\(x^2\\)") == "<b>key</b> &lt;i&gt; \\(x^2\\)"
+    assert "<li><b>[1]</b> <b>a</b></li>" in missed.replace_missed("", ["**a**"], "D")
 
 
 def test_parse_json_reply_repairs_single_backslash_latex():
     # \( and \sqrt are invalid JSON escapes; \frac and \times parse as form feed / tab
-    r = grading.parse_json_reply(r'{"feedback": "Use \(\sqrt{x}\) and \frac{a}{b} \times 2\nnext", "ok": "\\(y\\)"}')
+    r = textutil.parse_json_reply(r'{"feedback": "Use \(\sqrt{x}\) and \frac{a}{b} \times 2\nnext", "ok": "\\(y\\)"}')
     assert r["feedback"] == "Use \\(\\sqrt{x}\\) and \\frac{a}{b} \\times 2\nnext" and r["ok"] == "\\(y\\)"
 
 
@@ -295,24 +295,24 @@ def test_ask_prompt_sends_front_only():
 
 
 def test_highlight_ask_answers_questions_and_edits():
-    assert "change nothing" in grading.EDIT_SYSTEM_PROMPT and "without giving away the answer" in grading.EDIT_SYSTEM_PROMPT
+    assert "change nothing" in note_chat.EDIT_SYSTEM_PROMPT and "without giving away the answer" in note_chat.EDIT_SYSTEM_PROMPT
     html = ui.ask_html()
     assert 'id="ai-ask-bubble"' in html and "aiStudy:open:" in html and "ai-ask-pop" not in html
-    panel = ui.panel_html("Ask <me>")
+    panel = panel_page.panel_html("Ask <me>")
     assert "pycmd(\"hide\")" in panel and "Ask &lt;me&gt;" in panel and "HIGHLIGHTED" in panel and 'content: "> "' in panel and 'content: "● "' in panel and "id=\"clr\"" in panel
-    p = grading.new_note_prompt({"Front": "Q?", "Back": ""}, "better wording?", "Q", [("D", "terse")])
+    p = note_chat.new_note_prompt({"Front": "Q?", "Back": ""}, "better wording?", "Q", [("D", "terse")])
     assert p.startswith("NEW NOTE") and "[Front]\nQ?" in p and "Highlighted:\nQ" in p and p.endswith("better wording?")
-    assert "NEW NOTE" in grading.EDIT_SYSTEM_PROMPT
+    assert "NEW NOTE" in note_chat.EDIT_SYSTEM_PROMPT
 
 
 def test_question_side_prompt_never_has_the_answer():
-    p = grading.question_side_prompt("What is CAP?", ["Name the three"], "what's partition", "partition", [("D", "terse")])
+    p = note_chat.question_side_prompt("What is CAP?", ["Name the three"], "what's partition", "partition", [("D", "terse")])
     assert p.startswith("QUESTION SIDE") and "Highlighted:\npartition" in p and "- Name the three" in p
     assert p.endswith("what's partition") and "terse" in p and "NOTE FIELDS" not in p
 
 
 def test_edit_prompt_without_grade_and_with_selection():
-    p = grading.edit_prompt({"Back": "B"}, "why?", [], [], None, (), "some text")
+    p = note_chat.edit_prompt({"Back": "B"}, "why?", [], [], None, (), "some text")
     assert p.startswith("ANSWER SIDE") and "Review:" not in p and "Highlighted:\nsome text" in p
 
 

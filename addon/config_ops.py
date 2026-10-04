@@ -3,7 +3,7 @@
 import json
 import os
 
-from .grading import parse_json_reply
+from .textutil import parse_json_reply
 from .session import CLAUDE_ALIASES, PROVIDERS, model_for, provider_of
 
 TIMEOUT_RANGE = (5, 600)

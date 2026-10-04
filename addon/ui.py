@@ -3,7 +3,7 @@
 import html
 import json
 
-from . import grading
+from .textutil import rich
 
 CSS = """
 <style>
@@ -248,97 +248,11 @@ def ask_html() -> str:
     return f'{ASK_CSS}<div id="ai-ask-bubble" title="Ask AI about this">AI</div>{ASK_JS}'
 
 
-_PANEL_HTML = """
-<style>
-html, body { height: 100%; margin: 0; }
-body { display: flex; flex-direction: column; box-sizing: border-box; padding: 0.5em 0.7em; font-size: 14px; text-align: left; }
-#hd { display: flex; align-items: center; justify-content: space-between; font-weight: 700; margin-bottom: 0.4em; }
-#clr { font: inherit; font-size: 12px; font-weight: 400; margin-right: 6px; padding: 1px 8px; cursor: pointer; }
-#x { cursor: pointer; opacity: 0.6; font-size: 20px; line-height: 1; padding: 0 4px; user-select: none; }
-#x:hover { opacity: 1; }
-#log { flex: 1; overflow-y: auto; min-height: 0; }
-#log .hint { opacity: 0.6; margin-top: 0.4em; }
-#log .you, #log .ai, #log .wait { padding-left: 1.2em; text-indent: -1.2em; white-space: pre-wrap; }  /* hanging prefix */
-#log .you { margin-top: 0.7em; font-weight: 600; }
-#log .you::before { content: "> "; }
-#log .ai, #log .wait { margin: 0.2em 0 0; }
-#log .ai::before, #log .wait::before { content: "● "; }
-#log .ai.err { color: #d33; }
-#log .wait { opacity: 0.6; }
-#quote { display: none; position: relative; margin-top: 0.5em; padding: 0.35em 1.6em 0.35em 0.6em; border-left: 3px solid #2563eb;
-         border-radius: 4px; background: #2563eb1a; font-size: 0.92em; max-height: 6.5em; overflow-y: auto; white-space: pre-wrap; }
-#quote .lbl { display: block; font-size: 0.8em; font-weight: 700; color: #2563eb; margin-bottom: 0.1em; }
-#quote .rm { position: absolute; top: 2px; right: 6px; cursor: pointer; opacity: 0.6; font-size: 16px; }
-#quote .rm:hover { opacity: 1; }
-#log .q { margin: 0.2em 0 0 0.8em; padding-left: 0.5em; border-left: 3px solid #2563eb; opacity: 0.75; font-size: 0.92em;
-          white-space: pre-wrap; max-height: 5em; overflow: hidden; }
-#cmd { width: 100%; box-sizing: border-box; margin-top: 0.5em; padding: 0.5em; font: inherit; border-radius: 6px; resize: none;
-       border: 1px solid #8888; background: transparent; color: inherit; }
-</style>
-<div id="hd"><span>AI Study</span><span><button id="clr" title="Clear the chat">Clear</button><span id="x" title="Close">&times;</span></span></div>
-<div id="log"><div class="hint">__HINT__</div></div>
-<div id="quote"><span class="lbl">HIGHLIGHTED</span><span id="qtext"></span><span class="rm" title="Remove">&times;</span></div>
-<textarea id="cmd" rows="3" placeholder="Type your question (Enter to send, Shift+Enter for a new line)"></textarea>
-<script>
-(function () {
-  const log = document.getElementById("log"), cmd = document.getElementById("cmd");
-  const hint = log.querySelector(".hint").cloneNode(true);
-  const quoteEl = document.getElementById("quote"), qtext = document.getElementById("qtext");
-  let sel = "", busy = false, wait = null, stale = 0;  // stale: replies still to come for messages that were cleared
-  const typeset = el => { if (window.MathJax && MathJax.typesetPromise) MathJax.typesetPromise([el]).catch(() => {}); };
-  function add(cls, html, text) {
-    const d = document.createElement("div"); d.className = cls;
-    if (html !== null) d.innerHTML = html; else d.textContent = text;
-    const h = log.querySelector(".hint"); if (h) h.remove();
-    log.appendChild(d); log.scrollTop = log.scrollHeight; return d;
-  }
-  function setQuote(s) { sel = s; qtext.textContent = s; quoteEl.style.display = s ? "block" : "none"; }
-  function clearAll() {
-    if (busy) stale++;
-    log.innerHTML = '<div class="hint">' + hint.innerHTML + "</div>"; cmd.value = ""; setQuote(""); busy = false; wait = null;
-  }
-  document.getElementById("clr").addEventListener("click", () => { clearAll(); cmd.focus(); });
-  document.getElementById("x").addEventListener("click", () => pycmd("hide"));
-  quoteEl.querySelector(".rm").addEventListener("click", () => { setQuote(""); cmd.focus(); });
-  cmd.addEventListener("keydown", function (e) {
-    e.stopPropagation();  // Anki's shortcuts must not fire while typing
-    if (e.key !== "Enter" || e.shiftKey || e.isComposing) return;
-    e.preventDefault();
-    const text = cmd.value;
-    if (busy || !text.trim()) return;
-    if (sel) add("q", null, sel);
-    add("you", null, text.trim());
-    pycmd("send:" + JSON.stringify({sel: sel, text: text}));
-    cmd.value = ""; setQuote(""); busy = true;
-    wait = add("wait", null, "Thinking…");
-  });
-  window.aiPanel = {
-    quote(s) { setQuote(s); cmd.focus(); },  // a new highlight replaces the previous one
-    reply(html, err) {
-      if (stale) { stale--; return; }
-      if (wait) { wait.remove(); wait = null; }
-      busy = false;
-      typeset(add("ai" + (err ? " err" : ""), html));
-      cmd.focus();
-    },
-    clear() { clearAll(); stale = 0; },
-  };
-})();
-</script>
-"""
-
-
-def panel_html(hint: str) -> str:
-    """The side panel's page; `hint` is the grey line shown while the conversation is empty."""
-    return _PANEL_HTML.replace("__HINT__", html.escape(hint))
-
-
-
 def display_items(items: list) -> list:
     """grading.parse_questions items with the AI's text made safe HTML for setQuestions (labels are ours)."""
-    r = grading.rich
-    return [dict(it, text=r(it["text"]), hint=r(it["hint"]),
-                 parts=[dict(p, text=r(p["text"]), hint=r(p["hint"])) for p in it["parts"]]) for it in items]
+    return [dict(it, text=rich(it["text"]), hint=rich(it["hint"]),
+                 parts=[dict(p, text=rich(p["text"]), hint=rich(p["hint"])) for p in it["parts"]]) for it in items]
+
 
 def verdict_html(verdict: dict, questions: list, answers: list) -> str:
     """questions = what was asked (may be empty: cloze / ask failed); answers = one per box."""
@@ -351,22 +265,22 @@ def verdict_html(verdict: dict, questions: list, answers: list) -> str:
             num = f"{i + 1}. " if len(questions) > 1 else ""
             a = answers[i] if i < len(answers) else ""
             rows.append(
-                f'<div class="ai-pq"><span class="ai-pq-q"><span class="ai-mark-{pq["verdict"]}">{marks[pq["verdict"]]}</span> {num}{grading.rich(q)}</span>'
+                f'<div class="ai-pq"><span class="ai-pq-q"><span class="ai-mark-{pq["verdict"]}">{marks[pq["verdict"]]}</span> {num}{rich(q)}</span>'
                 f'{_you_html(a, pq["verdict"], pq.get("parts"))}'
-                f'<div>{grading.rich(pq["note"])}</div></div>'
+                f'<div>{rich(pq["note"])}</div></div>'
             )
     else:
         parts = per_q[0].get("parts") if len(per_q) == 1 else None
         rows.append(_you_html(chr(10).join(a for a in answers if a.strip()), v, parts))
     missed = verdict["missed"]
     missed_part = (
-        "<b>Missed:</b><ul>" + "".join(f"<li>{grading.rich(m)}</li>" for m in missed) + "</ul>"
+        "<b>Missed:</b><ul>" + "".join(f"<li>{rich(m)}</li>" for m in missed) + "</ul>"
         if missed else "<b>Missed:</b> nothing"
     )
     return (
         f'{CSS}<div class="ai-verdict"><span class="ai-badge ai-{v}">{v.upper()}</span>'
         f'{"".join(rows)}'
-        f"<div style='margin-top:0.5em'>{grading.rich(verdict['feedback'])}</div>"
+        f"<div style='margin-top:0.5em'>{rich(verdict['feedback'])}</div>"
         f"<div style='margin-top:0.5em'>{missed_part}</div></div>"
     )
 
@@ -382,7 +296,7 @@ def _you_html(answer: str, verdict: str, parts) -> str:
     if parts:
         items = "".join(
             f'<li><span class="ai-mark-{p["verdict"]}">{html.escape(p["text"])}</span>'
-            + (f'<span class="ai-why"> — {grading.rich(p["why"])}</span>' if p["verdict"] != "correct" and p.get("why") else "")
+            + (f'<span class="ai-why"> — {rich(p["why"])}</span>' if p["verdict"] != "correct" and p.get("why") else "")
             + "</li>" for p in parts)
         return f'<div class="ai-you ai-you-marked">You:<ul class="ai-claims">{items}</ul></div>'
     return f'<div class="ai-you{_you_class(verdict)}">You: {html.escape(answer.strip() or "(blank)")}</div>'

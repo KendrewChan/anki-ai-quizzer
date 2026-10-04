@@ -4,13 +4,12 @@ What changed in each version, newest first. How the add-on works today is in [do
 
 ## Unreleased
 
-- Space and **Show Answer** now grade your answer too (blank boxes count as no answer) instead of just flipping the card, for decks with AI Study on. **Enter** with all boxes empty still shows the answer without grading. If grading fails, Space shows the answer.
-- AI chats (the side panel, ⚙ Settings and ✨ Generate/Update Cards) mark your messages with `> ` and the AI's replies with `● `.
-- The Missed section now counts how often each point is missed: `Missed (date) · 5 reviews` with `[3]` in front of each point (red from 3). It keeps accumulating across reviews (most-missed first, up to 12 points) instead of being replaced each time; a point you miss again is matched even if the AI words it a little differently. Older sections count as one review.
-- The side chat panels have a **Clear** button that empties the conversation.
-- Anki's Add Cards window gets an **AI Study** button that opens a chat panel at its right edge. Ask about the note you're writing (wording, what goes on the back, how to split it into cards); it sees the fields so far and never changes anything. Only when AI Study is on.
-- Highlight-to-ask replies now put separate points on their own lines ("- " bullets, or 1. 2. 3. when order matters) instead of one run-on paragraph.
-- Highlight-to-ask now opens a chat panel on the right instead of a popup on the card. Anki's window widens to make room, so the card doesn't move or resize, and closing the panel (×) shrinks it back. Your highlight is shown in a blue "HIGHLIGHTED" block above the chat box (× removes it) and is kept above your message in the chat. The conversation stays across cards until the review session ends.
+- Highlight-to-ask now opens a chat panel on the right instead of a popup. The window widens so the card doesn't move; the highlight is quoted above the chat box and kept above your message. The conversation stays across cards; **Clear** empties it. Replies put separate points on their own lines.
+- Anki's Add Cards window gets an **AI Study** button that opens a chat beside it about the note you're writing (answers only, only when AI Study is on).
+- Space and **Show Answer** grade your typed answers (blank boxes count as no answer) instead of just flipping the card. Enter with all boxes empty still shows the answer; after a failed grading, Space shows it.
+- The Missed section counts how often each point is missed (`[3]` before the point, red when often) across reviews, matching rewordings of the same point.
+- AI chats mark your messages with `> ` and replies with `● `.
+- Internal: the prompt, Missed and note-chat code moved out of `grading.py` into `textutil.py`, `missed.py` and `note_chat.py`; the panel page into `panel_page.py`. No behaviour change.
 
 ## v1.32 — Settings sync between computers (2026-10-03)
 

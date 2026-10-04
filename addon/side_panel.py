@@ -10,7 +10,8 @@ from aqt import mw
 from aqt.qt import QDockWidget, QEvent, QObject, Qt, QTimer, QVBoxLayout, QWidget
 from aqt.webview import AnkiWebView
 
-from . import grading, ui
+from . import panel_page
+from .textutil import rich
 
 WIDTH = 380  # review panel width in px; the main window grows by this much
 ADD_WIDTH = 340
@@ -22,7 +23,7 @@ class Chat:
         self.on_close = on_close
         self.web = AnkiWebView(title="ai study chat")
         self.web.set_bridge_command(self._on_bridge, self)
-        self.web.stdHtml(ui.panel_html(hint), js=["js/mathjax.js", "js/vendor/mathjax/tex-chtml-full.js"],  # as the reviewer
+        self.web.stdHtml(panel_page.panel_html(hint), js=["js/mathjax.js", "js/vendor/mathjax/tex-chtml-full.js"],  # as the reviewer
                          context=self)
 
     def js(self, code: str):
@@ -34,7 +35,7 @@ class Chat:
         self.js(f"aiPanel.quote({json.dumps(selection)});")
 
     def reply(self, text: str, err: bool = False):
-        self.js(f"aiPanel.reply({json.dumps(grading.rich(text))}, {json.dumps(err)});")
+        self.js(f"aiPanel.reply({json.dumps(rich(text))}, {json.dumps(err)});")
 
     def clear(self):
         self.js("aiPanel.clear();")

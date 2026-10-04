@@ -11,7 +11,7 @@ from aqt.qt import QFileDialog
 from . import generate_col, generate_ops, health
 from .chat_page import ChatPage, deck_ids
 from .config_page import CSS as CONFIG_CSS
-from .grading import strip_html
+from .textutil import strip_html
 from .session import make_backend, provider_of
 
 TEMP = html.escape(generate_ops.TEMP_DECK)
