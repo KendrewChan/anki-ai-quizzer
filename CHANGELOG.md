@@ -4,6 +4,7 @@ What changed in each version, newest first. How the add-on works today is in [do
 
 ## Unreleased
 
+- AI chats (the side panel, ⚙ Settings and ✨ Generate/Update Cards) mark your messages with `> ` and the AI's replies with `● `.
 - The Missed section now counts how often each point is missed: `Missed (date) · 5 reviews` with `[3]` in front of each point (red from 3). It keeps accumulating across reviews (most-missed first, up to 12 points) instead of being replaced each time; a point you miss again is matched even if the AI words it a little differently. Older sections count as one review.
 - The side chat panels have a **Clear** button that empties the conversation.
 - Anki's Add Cards window gets an **AI Study** button that opens a chat panel at its right edge. Ask about the note you're writing (wording, what goes on the back, how to split it into cards); it sees the fields so far and never changes anything. Only when AI Study is on.

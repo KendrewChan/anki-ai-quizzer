@@ -49,9 +49,11 @@ CSS = """
 #cfg a.back { cursor: pointer; opacity: 0.7; font-size: 0.9em; }
 #cfg h2 { margin: 0.4em 0 0.6em; }
 #log { max-height: 34vh; overflow-y: auto; font-size: 0.92em; margin-bottom: 0.5em; }
-#log .you { margin-top: 0.6em; font-weight: 600; }
-#log .ai { margin: 0.2em 0 0 1em; white-space: pre-wrap; }
-#log .err { margin-left: 1em; color: #d33; white-space: pre-wrap; }
+#log .you { margin-top: 0.6em; font-weight: 600; padding-left: 1.2em; text-indent: -1.2em; }
+#log .you::before { content: "> "; }
+#log .ai, #log .err { margin: 0.2em 0 0; padding-left: 1.2em; text-indent: -1.2em; white-space: pre-wrap; }  /* hanging prefix */
+#log .ai::before, #log .err::before { content: "● "; }
+#log .err { color: #d33; }
 #cmd { width: 100%; box-sizing: border-box; padding: 0.6em; font: inherit; border-radius: 6px;
        border: 1px solid #8888; background: transparent; color: inherit; }
 #status { font-size: 0.85em; opacity: 0.7; min-height: 1.3em; margin: 0.3em 0 0.8em; }
