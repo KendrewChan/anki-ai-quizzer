@@ -252,10 +252,13 @@ body { display: flex; flex-direction: column; box-sizing: border-box; padding: 0
 #x:hover { opacity: 1; }
 #log { flex: 1; overflow-y: auto; min-height: 0; }
 #log .hint { opacity: 0.6; margin-top: 0.4em; }
-#log .you { margin-top: 0.7em; font-weight: 600; white-space: pre-wrap; }
-#log .ai { margin: 0.2em 0 0 0.8em; white-space: pre-wrap; }
+#log .you, #log .ai, #log .wait { padding-left: 1.2em; text-indent: -1.2em; white-space: pre-wrap; }  /* hanging prefix */
+#log .you { margin-top: 0.7em; font-weight: 600; }
+#log .you::before { content: "> "; }
+#log .ai, #log .wait { margin: 0.2em 0 0; }
+#log .ai::before, #log .wait::before { content: "● "; }
 #log .ai.err { color: #d33; }
-#log .wait { margin: 0.2em 0 0 0.8em; opacity: 0.6; }
+#log .wait { opacity: 0.6; }
 #quote { display: none; position: relative; margin-top: 0.5em; padding: 0.35em 1.6em 0.35em 0.6em; border-left: 3px solid #2563eb;
          border-radius: 4px; background: #2563eb1a; font-size: 0.92em; max-height: 6.5em; overflow-y: auto; white-space: pre-wrap; }
 #quote .lbl { display: block; font-size: 0.8em; font-weight: 700; color: #2563eb; margin-bottom: 0.1em; }
