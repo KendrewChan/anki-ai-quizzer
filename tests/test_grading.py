@@ -91,8 +91,8 @@ def test_parse_questions_rejects_empty(reply):
 
 
 def test_missed_html_shows_count_and_reviews():
-    assert grading.missed_html([("a&lt;b", 3)], "2026-10-02", 5) == (
-        "<hr><b>Missed (2026-10-02)</b> <i>5 reviews</i><ul><li><b>[3]</b> a&lt;b</li></ul>")
+    assert grading.missed_html([("a&lt;b", 2)], "2026-10-02", 5) == (
+        "<hr><b>Missed (2026-10-02)</b> <i>5 reviews</i><ul><li><b>[2]</b> a&lt;b</li></ul>")
     assert grading.missed_html([("x", 1)], "D", 1).startswith("<hr><b>Missed (D)</b> <i>1 review</i>")
 
 
