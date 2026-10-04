@@ -4,6 +4,7 @@ What changed in each version, newest first. How the add-on works today is in [do
 
 ## Unreleased
 
+- The side chat panels have a **Clear** button that empties the conversation.
 - Anki's Add Cards window gets an **AI Study** button that opens a chat panel at its right edge. Ask about the note you're writing (wording, what goes on the back, how to split it into cards); it sees the fields so far and never changes anything. Only when AI Study is on.
 - Highlight-to-ask replies now put separate points on their own lines ("- " bullets, or 1. 2. 3. when order matters) instead of one run-on paragraph.
 - Highlight-to-ask now opens a chat panel on the right instead of a popup on the card. Anki's window widens to make room, so the card doesn't move or resize, and closing the panel (×) shrinks it back. Your highlight is shown in a blue "HIGHLIGHTED" block above the chat box (× removes it) and is kept above your message in the chat. The conversation stays across cards until the review session ends.

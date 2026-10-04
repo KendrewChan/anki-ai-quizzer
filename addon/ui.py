@@ -247,6 +247,7 @@ _PANEL_HTML = """
 html, body { height: 100%; margin: 0; }
 body { display: flex; flex-direction: column; box-sizing: border-box; padding: 0.5em 0.7em; font-size: 14px; text-align: left; }
 #hd { display: flex; align-items: center; justify-content: space-between; font-weight: 700; margin-bottom: 0.4em; }
+#clr { font: inherit; font-size: 12px; font-weight: 400; margin-right: 6px; padding: 1px 8px; cursor: pointer; }
 #x { cursor: pointer; opacity: 0.6; font-size: 20px; line-height: 1; padding: 0 4px; user-select: none; }
 #x:hover { opacity: 1; }
 #log { flex: 1; overflow-y: auto; min-height: 0; }
@@ -265,15 +266,16 @@ body { display: flex; flex-direction: column; box-sizing: border-box; padding: 0
 #cmd { width: 100%; box-sizing: border-box; margin-top: 0.5em; padding: 0.5em; font: inherit; border-radius: 6px; resize: none;
        border: 1px solid #8888; background: transparent; color: inherit; }
 </style>
-<div id="hd"><span>AI Study</span><span id="x" title="Close">&times;</span></div>
+<div id="hd"><span>AI Study</span><span><button id="clr" title="Clear the chat">Clear</button><span id="x" title="Close">&times;</span></span></div>
 <div id="log"><div class="hint">__HINT__</div></div>
 <div id="quote"><span class="lbl">HIGHLIGHTED</span><span id="qtext"></span><span class="rm" title="Remove">&times;</span></div>
 <textarea id="cmd" rows="3" placeholder="Type your question (Enter to send, Shift+Enter for a new line)"></textarea>
 <script>
 (function () {
   const log = document.getElementById("log"), cmd = document.getElementById("cmd");
+  const hint = log.querySelector(".hint").cloneNode(true);
   const quoteEl = document.getElementById("quote"), qtext = document.getElementById("qtext");
-  let sel = "", busy = false, wait = null;
+  let sel = "", busy = false, wait = null, stale = 0;  // stale: replies still to come for messages that were cleared
   const typeset = el => { if (window.MathJax && MathJax.typesetPromise) MathJax.typesetPromise([el]).catch(() => {}); };
   function add(cls, html, text) {
     const d = document.createElement("div"); d.className = cls;
@@ -282,6 +284,11 @@ body { display: flex; flex-direction: column; box-sizing: border-box; padding: 0
     log.appendChild(d); log.scrollTop = log.scrollHeight; return d;
   }
   function setQuote(s) { sel = s; qtext.textContent = s; quoteEl.style.display = s ? "block" : "none"; }
+  function clearAll() {
+    if (busy) stale++;
+    log.innerHTML = '<div class="hint">' + hint.innerHTML + "</div>"; cmd.value = ""; setQuote(""); busy = false; wait = null;
+  }
+  document.getElementById("clr").addEventListener("click", () => { clearAll(); cmd.focus(); });
   document.getElementById("x").addEventListener("click", () => pycmd("close"));
   quoteEl.querySelector(".rm").addEventListener("click", () => { setQuote(""); cmd.focus(); });
   cmd.addEventListener("keydown", function (e) {
@@ -299,14 +306,13 @@ body { display: flex; flex-direction: column; box-sizing: border-box; padding: 0
   window.aiPanel = {
     quote(s) { setQuote(s); cmd.focus(); },  // a new highlight replaces the previous one
     reply(html, err) {
+      if (stale) { stale--; return; }
       if (wait) { wait.remove(); wait = null; }
       busy = false;
       typeset(add("ai" + (err ? " err" : ""), html));
       cmd.focus();
     },
-    clear() {
-      log.innerHTML = ""; cmd.value = ""; setQuote(""); busy = false; wait = null;
-    },
+    clear() { clearAll(); stale = 0; },
   };
   pycmd("ready");
 })();
