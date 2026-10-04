@@ -142,9 +142,15 @@ def test_verdict_html_escapes_user_answer():
 
 def test_verdict_html_per_question_rows():
     v = {"verdict": "partial", "ease": 2, "feedback": "f", "missed": ["m"],
-         "per_question": [{"verdict": "correct", "note": "n1"}, {"verdict": "wrong", "note": "n2"}]}
+         "per_question": [{"verdict": "correct", "note": "n1"}, {"verdict": "skipped", "note": "n2"}]}
     html = ui.verdict_html(v, ["Q one", "Q two"], ["a1", ""])
-    assert '<span class="ai-mark-correct">✓</span> 1. Q one' in html and '<span class="ai-mark-wrong">✗</span> 2. Q two' in html and "(blank)" in html and "<li>m</li>" in html
+    assert '<span class="ai-mark-correct">✓</span> 1. Q one' in html and "You: (skipped)" in html and "<li>m</li>" in html
+    assert '<span class="ai-mark-skipped">–</span> 2. Q two' in html and "✗" not in html
+
+
+def test_parse_grade_keeps_skipped_per_question():
+    r = grading.parse_grade('{"verdict":"correct","per_question":[{"verdict":"Skipped","note":"n"}]}')
+    assert r["per_question"][0]["verdict"] == "skipped" and "skipped" in grading.SYSTEM_PROMPT
 
 
 def test_verdict_html_colours_wrong_red_partial_orange():
