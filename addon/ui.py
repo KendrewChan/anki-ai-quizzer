@@ -55,9 +55,9 @@ JS = """
     list.style.setProperty("--ai-box-h", n > 1 ? "calc(45vh / " + n + ")" : "35vh");
   }
 
-  function submit(force) {  // force: grade even when every box is empty (Space / Show Answer)
+  function submit() {
     const values = boxes().map(b => b.value);
-    if (!force && values.every(v => !v.trim())) { pycmd("aiStudy:reveal"); return; }
+    if (values.every(v => !v.trim())) { pycmd("aiStudy:reveal"); return; }  // nothing typed: no grading
     submitted = true;
     boxes().forEach(b => b.disabled = true);
     aiStudy.setStatus("Grading…");
@@ -141,8 +141,8 @@ JS = """
     },
     submitNow() {  // Anki's Space / Show Answer: grade what is typed; python shows the answer itself if "none"
       if (submitted) return "busy";
-      if (!boxes().length) return "none";  // the rewritten questions haven't arrived yet
-      submit(true);
+      if (!boxes().some(b => b.value.trim())) return "none";  // no boxes yet, or nothing typed
+      submit();
       return "sent";
     },
     setStatus(msg, isErr) { status.textContent = msg; status.classList.toggle("ai-err", !!isErr); },
