@@ -26,12 +26,15 @@ body { display: flex; flex-direction: column; box-sizing: border-box; padding: 0
 #quote .rm:hover { opacity: 1; }
 #log .q { margin: 0.2em 0 0 0.8em; padding-left: 0.5em; border-left: 3px solid #2563eb; opacity: 0.75; font-size: 0.92em;
           white-space: pre-wrap; max-height: 5em; overflow: hidden; }
+#quick { margin-top: 0.5em; }
+#quick button { font: inherit; font-size: 12px; padding: 1px 10px; cursor: pointer; }
 #cmd { width: 100%; box-sizing: border-box; margin-top: 0.5em; padding: 0.5em; font: inherit; border-radius: 6px; resize: none;
        border: 1px solid #8888; background: transparent; color: inherit; }
 </style>
 <div id="hd"><span>AI Study</span><span><button id="clr" title="Clear the chat">Clear</button><span id="x" title="Close">&times;</span></span></div>
 <div id="log"><div class="hint">__HINT__</div></div>
 <div id="quote"><span class="lbl">HIGHLIGHTED</span><span id="qtext"></span><span class="rm" title="Remove">&times;</span></div>
+<div id="quick"><button id="explain" title="Explain the highlighted text (or the card)">Explain</button></div>
 <textarea id="cmd" rows="3" placeholder="Type your question (Enter to send, Shift+Enter for a new line)"></textarea>
 <script>
 (function () {
@@ -54,18 +57,21 @@ body { display: flex; flex-direction: column; box-sizing: border-box; padding: 0
   document.getElementById("clr").addEventListener("click", () => { clearAll(); cmd.focus(); });
   document.getElementById("x").addEventListener("click", () => pycmd("hide"));
   quoteEl.querySelector(".rm").addEventListener("click", () => { setQuote(""); cmd.focus(); });
-  cmd.addEventListener("keydown", function (e) {
-    e.stopPropagation();  // Anki's shortcuts must not fire while typing
-    if (e.key !== "Enter" || e.shiftKey || e.isComposing) return;
-    e.preventDefault();
-    const text = cmd.value;
+  function send(text) {
     if (busy || !text.trim()) return;
     if (sel) add("q", null, sel);
     add("you", null, text.trim());
     pycmd("send:" + JSON.stringify({sel: sel, text: text}));
     cmd.value = ""; setQuote(""); busy = true;
     wait = add("wait", null, "Thinking…");
+  }
+  cmd.addEventListener("keydown", function (e) {
+    e.stopPropagation();  // Anki's shortcuts must not fire while typing
+    if (e.key !== "Enter" || e.shiftKey || e.isComposing) return;
+    e.preventDefault();
+    send(cmd.value);
   });
+  document.getElementById("explain").addEventListener("click", () => { send("Explain this."); cmd.focus(); });
   window.aiPanel = {
     quote(s) { setQuote(s); cmd.focus(); },  // a new highlight replaces the previous one
     reply(html, err) {
