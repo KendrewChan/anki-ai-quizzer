@@ -33,8 +33,8 @@ class Chat:
         else:
             self.pending.append(code)  # the page says "ready" when it has loaded
 
-    def prefill(self, selection: str):
-        self.js(f"aiPanel.prefill({json.dumps(ui.prefix_for(selection))}, {json.dumps(selection)});")
+    def quote(self, selection: str):
+        self.js(f"aiPanel.quote({json.dumps(selection)});")
 
     def reply(self, text: str, err: bool = False):
         self.js(f"aiPanel.reply({json.dumps(grading.rich(text))}, {json.dumps(err)});")
@@ -115,7 +115,7 @@ class ReviewPanel:
 
     def show_selection(self, selection: str):
         self.open()
-        self.chat.prefill(selection)
+        self.chat.quote(selection)
 
     def reply(self, text: str, err: bool = False):
         if self.chat is not None:

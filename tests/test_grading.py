@@ -273,10 +273,8 @@ def test_highlight_ask_answers_questions_and_edits():
     assert "change nothing" in grading.EDIT_SYSTEM_PROMPT and "without giving away the answer" in grading.EDIT_SYSTEM_PROMPT
     html = ui.ask_html()
     assert 'id="ai-ask-bubble"' in html and "aiStudy:open:" in html and "ai-ask-pop" not in html
-    assert ui.prefix_for("a  b\nc") == 'Re "a b c": '
-    assert ui.prefix_for("x" * 70) == 'Re "' + "x" * 60 + '…": '
     panel = ui.panel_html("Ask <me>")
-    assert "pycmd(\"close\")" in panel and "pycmd(\"ready\")" in panel and "Ask &lt;me&gt;" in panel
+    assert "pycmd(\"close\")" in panel and "pycmd(\"ready\")" in panel and "Ask &lt;me&gt;" in panel and "HIGHLIGHTED" in panel
     p = grading.new_note_prompt({"Front": "Q?", "Back": ""}, "better wording?", "Q", [("D", "terse")])
     assert p.startswith("NEW NOTE") and "[Front]\nQ?" in p and "Highlighted:\nQ" in p and p.endswith("better wording?")
     assert "NEW NOTE" in grading.EDIT_SYSTEM_PROMPT
