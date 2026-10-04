@@ -92,7 +92,7 @@ def test_parse_questions_rejects_empty(reply):
 
 def test_missed_html_shows_count_and_reviews():
     assert grading.missed_html([("a&lt;b", 3)], "2026-10-02", 5) == (
-        "<hr><b>Missed (2026-10-02)</b> <i>5 reviews</i><ul><li>a&lt;b <i>×3</i></li></ul>")
+        "<hr><b>Missed (2026-10-02)</b> <i>5 reviews</i><ul><li><b>[3]</b> a&lt;b</li></ul>")
     assert grading.missed_html([("x", 1)], "D", 1).startswith("<hr><b>Missed (D)</b> <i>1 review</i>")
 
 
@@ -192,7 +192,7 @@ def test_replace_missed_counts_repeats_and_reviews():
     back = "<ul><li>real answer</li></ul>"
     one = grading.replace_missed(back, ["Leader **election** uses terms", "quorum"], "D1")
     assert one == ("<ul><li>real answer</li></ul><hr><b>Missed (D1)</b> <i>1 review</i>"
-                   "<ul><li>Leader <b>election</b> uses terms <i>×1</i></li><li>quorum <i>×1</i></li></ul>")
+                   "<ul><li><b>[1]</b> Leader <b>election</b> uses terms</li><li><b>[1]</b> quorum</li></ul>")
     two = grading.replace_missed(one, ["quorum", "leader election uses terms and votes", "new gap"], "D2")
     reviews, items = grading.parse_missed(two)
     assert reviews == 2
@@ -201,20 +201,26 @@ def test_replace_missed_counts_repeats_and_reviews():
 
 
 def test_replace_missed_clean_review_keeps_points_and_counts_the_review():
-    out = grading.replace_missed("A<hr><b>Missed (D1)</b> <i>2 reviews</i><ul><li>old <i>×2</i></li></ul>", [], "D3")
-    assert out == "A<hr><b>Missed (D3)</b> <i>3 reviews</i><ul><li>old <i>×2</i></li></ul>"
+    out = grading.replace_missed("A<hr><b>Missed (D1)</b> <i>2 reviews</i><ul><li><b>[2]</b> old</li></ul>", [], "D3")
+    assert out == "A<hr><b>Missed (D3)</b> <i>3 reviews</i><ul><li><b>[2]</b> old</li></ul>"
     assert grading.replace_missed("A", [], "D") == "A<hr><b>Missed (D)</b> <i>1 review</i>: nothing"
+
+
+def test_missed_count_turns_red_from_four_and_old_suffix_format_is_read():
+    out = grading.replace_missed("A<hr><b>Missed (D)</b> <i>5 reviews</i><ul><li>hot <i>×3</i></li></ul>", ["hot"], "E")
+    assert '<li><b style="color:#d33">[4]</b> hot</li>' in out
+    assert grading.parse_missed(out) == (6, [("hot", 4)])
 
 
 def test_replace_missed_reads_the_old_uncounted_format():
     out = grading.replace_missed("A<hr><b>Missed (2026-09-26)</b><ul><li>old</li></ul>", ["old"], "D")
-    assert out == "A<hr><b>Missed (D)</b> <i>2 reviews</i><ul><li>old <i>×2</i></li></ul>"
+    assert out == "A<hr><b>Missed (D)</b> <i>2 reviews</i><ul><li><b>[2]</b> old</li></ul>"
 
 
 def test_replace_missed_tolerates_editor_reformatting_and_keeps_other_hr():
     back = "A<hr>B\n<hr />\n<b> Missed (2026-09-26) </b>\n<ul>\n<li>old</li>\n</ul>"
     assert grading.replace_missed(back, ["n"], "D") == (
-        "A<hr>B<hr><b>Missed (D)</b> <i>2 reviews</i><ul><li>old <i>×1</i></li><li>n <i>×1</i></li></ul>")
+        "A<hr>B<hr><b>Missed (D)</b> <i>2 reviews</i><ul><li><b>[1]</b> old</li><li><b>[1]</b> n</li></ul>")
 
 
 def test_missed_keeps_only_the_most_missed_points():
@@ -258,7 +264,7 @@ def test_style_guide_in_every_system_prompt():
 
 def test_rich_escapes_and_bolds_keeps_latex():
     assert grading.rich("**key** <i> \\(x^2\\)") == "<b>key</b> &lt;i&gt; \\(x^2\\)"
-    assert "<li><b>a</b> <i>×1</i></li>" in grading.replace_missed("", ["**a**"], "D")
+    assert "<li><b>[1]</b> <b>a</b></li>" in grading.replace_missed("", ["**a**"], "D")
 
 
 def test_parse_json_reply_repairs_single_backslash_latex():
