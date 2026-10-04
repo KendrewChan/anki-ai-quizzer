@@ -129,15 +129,15 @@ def reveal():
 
 
 def around_show_answer(reviewer, *args, _old):
-    """Anki's Space and Show Answer: with AI Study on for the card they grade what is typed (blank boxes included)
-    instead of just flipping the card. Anything else keeps Anki's behaviour."""
+    """Anki's Space and Show Answer: with AI Study on for the card they grade what is typed, but only if any box has
+    text; otherwise they just show the answer. Anything else keeps Anki's behaviour."""
     card = reviewer.card
     if (S.bypass or reviewer.state != "question" or card is None or card.id in S.no_grade
             or card.id not in S.ctx or not active(card)):
         return _old(reviewer, *args)
 
     def on_page(result):
-        if result == "none":  # no answer boxes (rewritten questions still pending): behave as Anki does
+        if result == "none":  # nothing typed (or no boxes yet): just show the answer
             reveal()
 
     reviewer.web.evalWithCallback("window.aiStudy ? aiStudy.submitNow() : 'none'", on_page)
