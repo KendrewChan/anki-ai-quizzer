@@ -9,7 +9,7 @@ from aqt import gui_hooks, mw
 from aqt.deckbrowser import DeckBrowser
 from aqt.operations.note import update_note
 from aqt.overview import Overview
-from aqt.qt import QAction
+from aqt.qt import QAction, QDialogButtonBox
 from aqt.reviewer import Reviewer
 
 from . import config_ops, grading, health, state, ui
@@ -17,7 +17,7 @@ from .chat_page import deck_ids, load_config, migrate_once
 from .config_page import ConfigPage
 from .generate_page import GeneratePage
 from .session import make_backend, provider_of
-from .side_panel import AskPanel
+from .side_panel import AddPanel, ReviewPanel
 
 ADDON = __name__.split(".")[0]
 
@@ -30,7 +30,7 @@ class State:
         self.cwd = None
         self.page = None
         self.gen_page = None
-        self.panel = None  # side_panel.AskPanel: the highlight-to-ask chat
+        self.panel = None  # side_panel.ReviewPanel: the highlight-to-ask chat
         self.action = None
         self.reset()
 
@@ -241,6 +241,38 @@ def ask(sel: str, request: str):
     edit_session().request(cid, prompt, grading.parse_edit_reply, c.get("grade_timeout_s", 60), on_edited)
 
 
+def on_add_cards_init(addcards):
+    """An "AI Study" button in the Add Cards window opens/closes a chat panel at its side (only while AI Study is on)."""
+    if not S.enabled:
+        return
+    panel = AddPanel(addcards, lambda sel, text: ask_new(addcards, panel, sel, text))
+    button = addcards.form.buttonBox.addButton("AI Study", QDialogButtonBox.ButtonRole.ActionRole)
+    button.setAutoDefault(False)  # Enter in the editor must not press it
+    button.clicked.connect(lambda: panel.toggle() if S.enabled else None)
+    addcards._ai_panel = panel  # keep it alive with the window
+
+
+def ask_new(addcards, panel, sel: str, request: str):
+    """A question about the note being written in the Add Cards window. Answers only; nothing is ever written."""
+    if not request or not S.enabled or S.disabled:
+        panel.reply("AI Study is off.", True)
+        return
+
+    def go(*_):
+        note = addcards.editor.note
+        c = cfg()
+        did = addcards.deck_chooser.selected_deck_id
+        rules = config_ops.deck_chain(mw.col.decks.name(did), deck_ids(), c.get("deck_prompts") or {})
+        prompt = grading.new_note_prompt(dict(note.items()) if note else {}, request, sel, rules)
+
+        def on_reply(_cid, result, err):  # any "fields" are ignored: nothing here edits
+            panel.reply(f"Failed: {err.message}" if err else result["reply"] or "…", bool(err))
+
+        edit_session().request(0, prompt, grading.parse_edit_reply, c.get("grade_timeout_s", 60), on_reply)
+
+    addcards.editor.call_after_note_saved(go)  # the field being typed in counts too
+
+
 def append_missed(missed: list):
     """Replace the card's Missed section with this review's misses (or "nothing") + today's date."""
     if not config_ops.toggle_on(cfg(), "missed_append"):
@@ -328,11 +360,12 @@ def on_sync_finished():
 
 def setup():
     S.page = ConfigPage(ADDON, end_session)
-    S.panel = AskPanel(ask)
+    S.panel = ReviewPanel(ask)
     S.gen_page = GeneratePage(ADDON)
     setup_menu()
     gui_hooks.deck_browser_will_render_content.append(on_deck_browser)
     gui_hooks.overview_will_render_content.append(on_overview)
+    gui_hooks.add_cards_did_init.append(on_add_cards_init)
     gui_hooks.card_will_show.append(on_card_will_show)
     gui_hooks.reviewer_did_show_question.append(on_show_question)
     gui_hooks.reviewer_did_show_answer.append(on_show_answer)

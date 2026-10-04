@@ -71,6 +71,11 @@ Only active while **AI Study** is ON, and only for cards whose home deck has AI 
 - It is a separate CLI backend (`grading.EDIT_SYSTEM_PROMPT`), started on first use and closed with the review session, so the tutor conversation stays clean, and it remembers earlier questions within the session.
 - The reply is `{"reply", "fields": {name: html}}`. Only existing fields that actually change are written; unknown field names are reported. The save is one `update_note` without an initiator, so the reviewer redraws the card with the new text. It is one undo step (Edit → Undo). The reply arrives in the panel, which the redraw doesn't touch; a reply to an earlier card still lands in the log. A failed request doesn't count toward the study failure policy.
 
+**AI panel in the Add Cards window** (only while AI Study is on)
+- Anki's Add Cards window gets an **AI Study** button (`main.on_add_cards_init`, `gui_hooks.add_cards_did_init`) that opens and closes a chat panel (`side_panel.AddPanel`) stuck to the window's right edge. It is a separate frameless tool window that follows the dialog (move, resize, hide); if there is no room on the right, the dialog slides left first. It uses the same page and conversation UI as the review panel but has no highlight prefix.
+- Messages go to the same note-edit CLI backend as highlight-to-ask, as `grading.new_note_prompt`: the fields typed so far (the field being typed in is saved first), the selected deck's rules and the question. Answers only: any `fields` in the reply are ignored and the note is never written. The button is not added if AI Study is off when the window opens.
+- Anki's Browser editor (updating existing cards) has no panel yet.
+
 **Missed section** (`missed_append`, default on)
 - After each graded review, the card's Missed section is **replaced** with exactly one `<hr><b>Missed (YYYY-MM-DD)</b><ul>…</ul>` (or `…</b>: nothing`).
 - It goes into the first existing field of `Back` → `Back Extra` → the note's last field.

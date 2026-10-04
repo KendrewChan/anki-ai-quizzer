@@ -275,7 +275,11 @@ def test_highlight_ask_answers_questions_and_edits():
     assert 'id="ai-ask-bubble"' in html and "aiStudy:open:" in html and "ai-ask-pop" not in html
     assert ui.prefix_for("a  b\nc") == 'Re "a b c": '
     assert ui.prefix_for("x" * 70) == 'Re "' + "x" * 60 + '…": '
-    assert "pycmd(\"close\")" in ui.PANEL_HTML and "pycmd(\"ready\")" in ui.PANEL_HTML
+    panel = ui.panel_html("Ask <me>")
+    assert "pycmd(\"close\")" in panel and "pycmd(\"ready\")" in panel and "Ask &lt;me&gt;" in panel
+    p = grading.new_note_prompt({"Front": "Q?", "Back": ""}, "better wording?", "Q", [("D", "terse")])
+    assert p.startswith("NEW NOTE") and "[Front]\nQ?" in p and "Highlighted:\nQ" in p and p.endswith("better wording?")
+    assert "NEW NOTE" in grading.EDIT_SYSTEM_PROMPT
 
 
 def test_question_side_prompt_never_has_the_answer():

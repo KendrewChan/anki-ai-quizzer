@@ -248,7 +248,7 @@ def prefix_for(selection: str) -> str:
     return f'Re "{s[:60]}{"…" if len(s) > 60 else ""}": '
 
 
-PANEL_HTML = """
+_PANEL_HTML = """
 <style>
 html, body { height: 100%; margin: 0; }
 body { display: flex; flex-direction: column; box-sizing: border-box; padding: 0.5em 0.7em; font-size: 14px; text-align: left; }
@@ -265,8 +265,8 @@ body { display: flex; flex-direction: column; box-sizing: border-box; padding: 0
        border: 1px solid #8888; background: transparent; color: inherit; }
 </style>
 <div id="hd"><span>AI Study</span><span id="x" title="Close">&times;</span></div>
-<div id="log"><div class="hint">Highlight text on the card and click the AI bubble, then ask. Your question about it stays here as you review.</div></div>
-<textarea id="cmd" rows="3" placeholder="Ask about this, or change it (Enter to send, Shift+Enter for a new line)"></textarea>
+<div id="log"><div class="hint">__HINT__</div></div>
+<textarea id="cmd" rows="3" placeholder="Type your question (Enter to send, Shift+Enter for a new line)"></textarea>
 <script>
 (function () {
   const log = document.getElementById("log"), cmd = document.getElementById("cmd");
@@ -316,6 +316,11 @@ body { display: flex; flex-direction: column; box-sizing: border-box; padding: 0
 })();
 </script>
 """
+
+
+def panel_html(hint: str) -> str:
+    """The side panel's page; `hint` is the grey line shown while the conversation is empty."""
+    return _PANEL_HTML.replace("__HINT__", html.escape(hint))
 
 
 
