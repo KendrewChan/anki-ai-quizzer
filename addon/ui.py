@@ -242,12 +242,6 @@ def ask_html() -> str:
     return f'{ASK_CSS}<div id="ai-ask-bubble" title="Ask AI about this">AI</div>{ASK_JS}'
 
 
-def prefix_for(selection: str) -> str:
-    """Chat-box start for a highlight: the user types their question after it."""
-    s = " ".join(selection.split())
-    return f'Re "{s[:60]}{"…" if len(s) > 60 else ""}": '
-
-
 _PANEL_HTML = """
 <style>
 html, body { height: 100%; margin: 0; }
@@ -261,16 +255,25 @@ body { display: flex; flex-direction: column; box-sizing: border-box; padding: 0
 #log .ai { margin: 0.2em 0 0 0.8em; white-space: pre-wrap; }
 #log .ai.err { color: #d33; }
 #log .wait { margin: 0.2em 0 0 0.8em; opacity: 0.6; }
+#quote { display: none; position: relative; margin-top: 0.5em; padding: 0.35em 1.6em 0.35em 0.6em; border-left: 3px solid #2563eb;
+         border-radius: 4px; background: #2563eb1a; font-size: 0.92em; max-height: 6.5em; overflow-y: auto; white-space: pre-wrap; }
+#quote .lbl { display: block; font-size: 0.8em; font-weight: 700; color: #2563eb; margin-bottom: 0.1em; }
+#quote .rm { position: absolute; top: 2px; right: 6px; cursor: pointer; opacity: 0.6; font-size: 16px; }
+#quote .rm:hover { opacity: 1; }
+#log .q { margin: 0.2em 0 0 0.8em; padding-left: 0.5em; border-left: 3px solid #2563eb; opacity: 0.75; font-size: 0.92em;
+          white-space: pre-wrap; max-height: 5em; overflow: hidden; }
 #cmd { width: 100%; box-sizing: border-box; margin-top: 0.5em; padding: 0.5em; font: inherit; border-radius: 6px; resize: none;
        border: 1px solid #8888; background: transparent; color: inherit; }
 </style>
 <div id="hd"><span>AI Study</span><span id="x" title="Close">&times;</span></div>
 <div id="log"><div class="hint">__HINT__</div></div>
+<div id="quote"><span class="lbl">HIGHLIGHTED</span><span id="qtext"></span><span class="rm" title="Remove">&times;</span></div>
 <textarea id="cmd" rows="3" placeholder="Type your question (Enter to send, Shift+Enter for a new line)"></textarea>
 <script>
 (function () {
   const log = document.getElementById("log"), cmd = document.getElementById("cmd");
-  let sel = "", prefix = "", busy = false, wait = null;
+  const quoteEl = document.getElementById("quote"), qtext = document.getElementById("qtext");
+  let sel = "", busy = false, wait = null;
   const typeset = el => { if (window.MathJax && MathJax.typesetPromise) MathJax.typesetPromise([el]).catch(() => {}); };
   function add(cls, html, text) {
     const d = document.createElement("div"); d.className = cls;
@@ -278,30 +281,23 @@ body { display: flex; flex-direction: column; box-sizing: border-box; padding: 0
     const h = log.querySelector(".hint"); if (h) h.remove();
     log.appendChild(d); log.scrollTop = log.scrollHeight; return d;
   }
+  function setQuote(s) { sel = s; qtext.textContent = s; quoteEl.style.display = s ? "block" : "none"; }
   document.getElementById("x").addEventListener("click", () => pycmd("close"));
+  quoteEl.querySelector(".rm").addEventListener("click", () => { setQuote(""); cmd.focus(); });
   cmd.addEventListener("keydown", function (e) {
     e.stopPropagation();  // Anki's shortcuts must not fire while typing
     if (e.key !== "Enter" || e.shiftKey || e.isComposing) return;
     e.preventDefault();
-    const v = cmd.value;
-    if (busy || !v.trim()) return;
-    const quoted = prefix && v.startsWith(prefix);
-    const text = quoted ? v.slice(prefix.length) : v;
-    if (!text.trim()) return;
-    add("you", null, v.trim());
-    pycmd("send:" + JSON.stringify({sel: quoted ? sel : "", text: text}));
-    cmd.value = ""; sel = prefix = ""; busy = true;
+    const text = cmd.value;
+    if (busy || !text.trim()) return;
+    if (sel) add("q", null, sel);
+    add("you", null, text.trim());
+    pycmd("send:" + JSON.stringify({sel: sel, text: text}));
+    cmd.value = ""; setQuote(""); busy = true;
     wait = add("wait", null, "Thinking…");
   });
   window.aiPanel = {
-    prefill(p, s) {  // a new highlight starts the message, unless the user already typed their own
-      const v = cmd.value;
-      if (!v.trim()) cmd.value = p;
-      else if (prefix && v.startsWith(prefix)) cmd.value = p + v.slice(prefix.length);
-      else cmd.value = p + v;
-      prefix = p; sel = s;
-      cmd.focus(); cmd.setSelectionRange(cmd.value.length, cmd.value.length);
-    },
+    quote(s) { setQuote(s); cmd.focus(); },  // a new highlight replaces the previous one
     reply(html, err) {
       if (wait) { wait.remove(); wait = null; }
       busy = false;
@@ -309,7 +305,7 @@ body { display: flex; flex-direction: column; box-sizing: border-box; padding: 0
       cmd.focus();
     },
     clear() {
-      log.innerHTML = ""; cmd.value = ""; sel = prefix = ""; busy = false; wait = null;
+      log.innerHTML = ""; cmd.value = ""; setQuote(""); busy = false; wait = null;
     },
   };
   pycmd("ready");
