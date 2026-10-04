@@ -20,18 +20,15 @@ class Chat:
     def __init__(self, on_send, on_close, hint: str):
         self.on_send = on_send  # (selection, text) -> None
         self.on_close = on_close
-        self.ready = False  # page loaded, so JS calls work
-        self.pending = []  # JS to run once the page has loaded
         self.web = AnkiWebView(title="ai study chat")
         self.web.set_bridge_command(self._on_bridge, self)
         self.web.stdHtml(ui.panel_html(hint), js=["js/mathjax.js", "js/vendor/mathjax/tex-chtml-full.js"],  # as the reviewer
                          context=self)
 
     def js(self, code: str):
-        if self.ready:
-            self.web.eval(code)
-        else:
-            self.pending.append(code)  # the page says "ready" when it has loaded
+        """Run `code` once the page's script has defined aiPanel (it may still be loading). Not a "ready" message
+        from the page: an early pycmd can be lost, and everything after it would then wait forever."""
+        self.web.eval("(function t() { if (window.aiPanel) { %s } else setTimeout(t, 100); })();" % code)
 
     def quote(self, selection: str):
         self.js(f"aiPanel.quote({json.dumps(selection)});")
@@ -44,12 +41,7 @@ class Chat:
 
     def _on_bridge(self, message: str):
         command, _, arg = message.partition(":")
-        if command == "ready":
-            self.ready = True
-            for code in self.pending:
-                self.web.eval(code)
-            self.pending = []
-        elif command == "close":
+        if command == "close":
             self.on_close()
         elif command == "send":
             try:

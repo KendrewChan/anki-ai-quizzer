@@ -314,7 +314,6 @@ body { display: flex; flex-direction: column; box-sizing: border-box; padding: 0
     },
     clear() { clearAll(); stale = 0; },
   };
-  pycmd("ready");
 })();
 </script>
 """
