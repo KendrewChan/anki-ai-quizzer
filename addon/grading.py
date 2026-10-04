@@ -254,6 +254,8 @@ ANSWER SIDE: you get the note's fields (raw HTML) and, when they were graded, wh
 - Both in one message: do both.
 - A field may end with a "Missed (date)" section the add-on maintains — leave it as it is unless the user asks about it. If a change request is unclear, change nothing and ask in "reply".
 
+NEW NOTE: the user is writing a note that isn't saved yet, and you get its fields so far. Answer their question about it (wording, what belongs on the back, splitting it into cards, accuracy) in "reply", at most about 120 words. Never change anything: "fields" is always {}.
+
 Deck rules, when given, take priority over everything else here (including the formatting guide) except the JSON reply format.
 
 Reply with JSON only, no code fences:
@@ -276,6 +278,13 @@ def edit_prompt(fields: dict, request: str, questions: list, answers: list, verd
         pairs = "\n".join(f"Q: {q}\nUser: {a.strip() or '(blank)'}" for q, a in zip(asked, _pad(answers, len(asked))))
         review = f"\n\nReview:\n{pairs}\nGrade: {verdict.get('verdict')} — {verdict.get('feedback', '')}"
     return (f"ANSWER SIDE\n\nNOTE FIELDS\n\n{note}{deck_rules_block(deck_rules)}{review}"
+            f"{_highlighted(selection)}\n\nUser's request:\n{request}")
+
+
+def new_note_prompt(fields: dict, request: str, selection: str = "", deck_rules: list = ()) -> str:
+    """Add Cards window: the note as typed so far (field name -> HTML)."""
+    note = "\n\n".join(f"[{name}]\n{value}" for name, value in fields.items()) or "(empty)"
+    return (f"NEW NOTE\n\nFIELDS SO FAR\n\n{note}{deck_rules_block(deck_rules)}"
             f"{_highlighted(selection)}\n\nUser's request:\n{request}")
 
 
