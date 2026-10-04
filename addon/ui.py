@@ -181,48 +181,20 @@ ASK_CSS = """
                  border-radius: 9px 9px 9px 2px; box-shadow: 0 1px 4px #0004; }
 #ai-ask-bubble::after { content: ""; position: absolute; left: 0; bottom: -5px;  /* speech-bubble tail toward the text */
                         border-style: solid; border-width: 6px 6px 0 0; border-color: #2563eb transparent transparent transparent; }
-#ai-ask-pop { display: none; position: absolute; z-index: 20; width: min(26em, calc(100vw - 16px)); box-sizing: border-box;
-              padding: 0.5em 0.6em; border-radius: 8px; text-align: left; font-size: 0.9em; line-height: 1.4;
-              background: var(--canvas, Canvas); color: inherit; border: 1px solid #8886; box-shadow: 0 4px 16px #0004; }
-#ai-ask-x { position: absolute; top: 2px; right: 4px; padding: 0 5px; cursor: pointer; opacity: 0.6;
-            font: 700 16px/20px sans-serif; user-select: none; }
-#ai-ask-x:hover { opacity: 1; }
-#ai-ask-quote { margin-right: 1.2em; font-size: 0.85em; opacity: 0.7; border-left: 3px solid #8886; padding-left: 0.5em; margin-bottom: 0.4em;
-                max-height: 4.2em; overflow: hidden; white-space: pre-wrap; }
-#ai-ask-input { width: 100%; box-sizing: border-box; padding: 0.35em 0.5em; font: inherit; border-radius: 6px;
-                border: 1px solid #8888; background: transparent; color: inherit; }
-#ai-ask-out { margin-top: 0.4em; white-space: pre-wrap; max-height: 40vh; overflow-y: auto; }
-#ai-ask-out:empty { display: none; }
-#ai-ask-out.ai-err { color: #d33; }
-#ai-ask-toast { display: none; position: fixed; z-index: 20; left: 50%; bottom: 12px; transform: translateX(-50%);
-                width: max-content; max-width: min(30em, calc(100vw - 16px)); padding: 0.45em 0.8em; border-radius: 8px;
-                font-size: 0.9em; text-align: left; white-space: pre-wrap; cursor: pointer;
-                background: #2b2b2b; color: #eee; box-shadow: 0 3px 12px #0006; }
 </style>
 """
 
 ASK_JS = """
 <script>
 (function () {
-  const $ = id => document.getElementById(id);
-  const bubble = $("ai-ask-bubble"), pop = $("ai-ask-pop"), quote = $("ai-ask-quote");
-  const input = $("ai-ask-input"), out = $("ai-ask-out"), toastEl = $("ai-ask-toast");
-  let sel = "", rect = null, timer = null, fromField = false;
-  const mine = el => el && (bubble.contains(el) || pop.contains(el) || toastEl.contains(el));
-  const typeset = el => { if (window.MathJax && MathJax.typesetPromise) MathJax.typesetPromise([el]).catch(() => {}); };
+  const bubble = document.getElementById("ai-ask-bubble");
+  let sel = "", rect = null, fromField = false;
 
   function origin(el) {  // viewport position of what el's top/left are measured from
     const op = el.offsetParent;  // a static <body> is reported, but then the page itself is the reference
     if (!op || (op === document.body && getComputedStyle(op).position === "static"))
       return {top: -window.scrollY, left: -window.scrollX};
     return op.getBoundingClientRect();
-  }
-  function place(el) {  // just under the highlight, kept inside the window
-    el.style.display = "block";
-    const base = origin(el);
-    const left = Math.max(8, Math.min(rect.left, window.innerWidth - el.offsetWidth - 8));
-    el.style.left = (left - base.left) + "px";
-    el.style.top = (rect.bottom + 6 - base.top) + "px";
   }
   function placeBubble() {  // the selection's top-right corner, tail resting on the text
     bubble.style.display = "block";
@@ -232,86 +204,119 @@ ASK_JS = """
     bubble.style.left = (left - base.left) + "px";
     bubble.style.top = (top - base.top) + "px";
   }
-  function close() { pop.style.display = "none"; bubble.style.display = "none"; }
-  function toast(html, err) {
-    toastEl.innerHTML = html; toastEl.style.color = err ? "#f88" : "";
-    toastEl.style.display = "block"; typeset(toastEl);
-    clearTimeout(timer); timer = setTimeout(() => { toastEl.style.display = "none"; }, 12000);
-  }
 
   bubble.addEventListener("mousedown", function (e) {  // mousedown: before the click clears the selection
     e.preventDefault(); e.stopPropagation();
     bubble.style.display = "none";
-    quote.textContent = sel.length > 300 ? sel.slice(0, 300) + "…" : sel;
-    out.innerHTML = ""; out.className = ""; input.value = ""; input.disabled = false;
-    place(pop); input.focus({preventScroll: true});
+    pycmd("aiStudy:open:" + sel);
   });
-  input.addEventListener("keydown", function (e) {
-    e.stopPropagation();  // keep Anki's keys (1-4, space, e…) out of the box
-    if (e.key === "Escape") { close(); return; }
-    if (e.key !== "Enter" || e.isComposing || !input.value.trim()) return;
-    e.preventDefault();
-    pycmd("aiStudy:ask:" + JSON.stringify({sel: sel, text: input.value.trim()}));
-    input.value = ""; input.disabled = true;
-    out.className = ""; out.textContent = "Thinking…";
-  });
-  $("ai-ask-x").addEventListener("click", close);
-  toastEl.addEventListener("click", () => { toastEl.style.display = "none"; });
 
   window.aiAsk = {
     up(e) {
       // Judge by where the drag started: a drag over the question often ends on the answer box below it.
-      if (mine(e.target) || fromField) return;
+      if (bubble.contains(e.target) || fromField) return;
       setTimeout(function () {
         const s = window.getSelection(), text = s.rangeCount ? s.toString().trim() : "";
         if (!text) { bubble.style.display = "none"; return; }
         sel = text; rect = s.getRangeAt(0).getBoundingClientRect();
-        pop.style.display = "none"; placeBubble();
+        placeBubble();
       }, 0);
     },
     down(e) {  // selecting inside an answer box is editing, not asking
       fromField = !!(e.target.closest && e.target.closest("textarea, input, select"));
-      if (mine(e.target)) return;
-      // An open box stays through plain clicks elsewhere; a new highlight (see up), another button, Esc or the X close it.
-      const control = e.target.closest && e.target.closest("button, a, [role=button]");
-      if (pop.style.display !== "block" || control) close();
-    },
-    reply(html, err) {  // in the open box, else as a toast (e.g. after an edit redrew the card)
-      if (pop.style.display !== "block") { toast(html, err); return; }
-      out.innerHTML = html; out.className = err ? "ai-err" : ""; typeset(out);
-      input.disabled = false; input.focus({preventScroll: true});
+      if (!bubble.contains(e.target)) bubble.style.display = "none";
     },
   };
   if (!window.aiAskBound) {  // once per page; the handlers act only while this card has the bubble
     window.aiAskBound = true;
-    document.addEventListener("mouseup", e => { if ($("ai-ask-pop")) window.aiAsk.up(e); });
-    document.addEventListener("mousedown", e => { if ($("ai-ask-pop")) window.aiAsk.down(e); });
+    document.addEventListener("mouseup", e => { if (document.getElementById("ai-ask-bubble")) window.aiAsk.up(e); });
+    document.addEventListener("mousedown", e => { if (document.getElementById("ai-ask-bubble")) window.aiAsk.down(e); });
   }
-  const first = __TOAST__;
-  if (first) toast(first[0], first[1]);
 })();
 </script>
 """
 
-ASK_PLACEHOLDER = {
-    "question": "Ask about this — e.g. what does this term mean? (Enter)",
-    "answer": "Ask about this, or change it — e.g. why? · reword this · add an example (Enter)",
-}
+
+def ask_html() -> str:
+    """Highlight-to-ask: selecting card text shows an "AI" bubble; clicking it opens the side panel (side_panel.py)."""
+    return f'{ASK_CSS}<div id="ai-ask-bubble" title="Ask AI about this">AI</div>{ASK_JS}'
 
 
-def ask_html(side: str, toast=None) -> str:
-    """Highlight-to-ask: selecting card text shows an "AI" bubble that opens a box at the highlight.
-    side = "question" | "answer"; toast = (text, is_error) to show on load (the reply to an edit that redrew the card)."""
-    first = [grading.rich(toast[0]), toast[1]] if toast else None
-    return (f'{ASK_CSS}<div id="ai-ask-bubble" title="Ask AI about this">AI</div>'
-            f'<div id="ai-ask-pop"><div id="ai-ask-x" title="Close">\u00d7</div><div id="ai-ask-quote"></div>'
-            f'<input id="ai-ask-input" placeholder="{html.escape(ASK_PLACEHOLDER[side])}"><div id="ai-ask-out"></div></div>'
-            f'<div id="ai-ask-toast"></div>' + ASK_JS.replace("__TOAST__", json.dumps(first)))
+def prefix_for(selection: str) -> str:
+    """Chat-box start for a highlight: the user types their question after it."""
+    s = " ".join(selection.split())
+    return f'Re "{s[:60]}{"…" if len(s) > 60 else ""}": '
 
 
-def ask_reply_js(text: str, err: bool) -> str:
-    """Show the AI's reply to a highlight question on the open card."""
-    return f"window.aiAsk && aiAsk.reply({json.dumps(grading.rich(text))}, {json.dumps(err)});"
+PANEL_HTML = """
+<style>
+html, body { height: 100%; margin: 0; }
+body { display: flex; flex-direction: column; box-sizing: border-box; padding: 0.5em 0.7em; font-size: 14px; text-align: left; }
+#hd { display: flex; align-items: center; justify-content: space-between; font-weight: 700; margin-bottom: 0.4em; }
+#x { cursor: pointer; opacity: 0.6; font-size: 20px; line-height: 1; padding: 0 4px; user-select: none; }
+#x:hover { opacity: 1; }
+#log { flex: 1; overflow-y: auto; min-height: 0; }
+#log .hint { opacity: 0.6; margin-top: 0.4em; }
+#log .you { margin-top: 0.7em; font-weight: 600; white-space: pre-wrap; }
+#log .ai { margin: 0.2em 0 0 0.8em; white-space: pre-wrap; }
+#log .ai.err { color: #d33; }
+#log .wait { margin: 0.2em 0 0 0.8em; opacity: 0.6; }
+#cmd { width: 100%; box-sizing: border-box; margin-top: 0.5em; padding: 0.5em; font: inherit; border-radius: 6px; resize: none;
+       border: 1px solid #8888; background: transparent; color: inherit; }
+</style>
+<div id="hd"><span>AI Study</span><span id="x" title="Close">&times;</span></div>
+<div id="log"><div class="hint">Highlight text on the card and click the AI bubble, then ask. Your question about it stays here as you review.</div></div>
+<textarea id="cmd" rows="3" placeholder="Ask about this, or change it (Enter to send, Shift+Enter for a new line)"></textarea>
+<script>
+(function () {
+  const log = document.getElementById("log"), cmd = document.getElementById("cmd");
+  let sel = "", prefix = "", busy = false, wait = null;
+  const typeset = el => { if (window.MathJax && MathJax.typesetPromise) MathJax.typesetPromise([el]).catch(() => {}); };
+  function add(cls, html, text) {
+    const d = document.createElement("div"); d.className = cls;
+    if (html !== null) d.innerHTML = html; else d.textContent = text;
+    const h = log.querySelector(".hint"); if (h) h.remove();
+    log.appendChild(d); log.scrollTop = log.scrollHeight; return d;
+  }
+  document.getElementById("x").addEventListener("click", () => pycmd("close"));
+  cmd.addEventListener("keydown", function (e) {
+    e.stopPropagation();  // Anki's shortcuts must not fire while typing
+    if (e.key !== "Enter" || e.shiftKey || e.isComposing) return;
+    e.preventDefault();
+    const v = cmd.value;
+    if (busy || !v.trim()) return;
+    const quoted = prefix && v.startsWith(prefix);
+    const text = quoted ? v.slice(prefix.length) : v;
+    if (!text.trim()) return;
+    add("you", null, v.trim());
+    pycmd("send:" + JSON.stringify({sel: quoted ? sel : "", text: text}));
+    cmd.value = ""; sel = prefix = ""; busy = true;
+    wait = add("wait", null, "Thinking…");
+  });
+  window.aiPanel = {
+    prefill(p, s) {  // a new highlight starts the message, unless the user already typed their own
+      const v = cmd.value;
+      if (!v.trim()) cmd.value = p;
+      else if (prefix && v.startsWith(prefix)) cmd.value = p + v.slice(prefix.length);
+      else cmd.value = p + v;
+      prefix = p; sel = s;
+      cmd.focus(); cmd.setSelectionRange(cmd.value.length, cmd.value.length);
+    },
+    reply(html, err) {
+      if (wait) { wait.remove(); wait = null; }
+      busy = false;
+      typeset(add("ai" + (err ? " err" : ""), html));
+      cmd.focus();
+    },
+    clear() {
+      log.innerHTML = ""; cmd.value = ""; sel = prefix = ""; busy = false; wait = null;
+    },
+  };
+  pycmd("ready");
+})();
+</script>
+"""
+
 
 
 def display_items(items: list) -> list:

@@ -5,7 +5,7 @@ What changed in each version, newest first. How the add-on works today is in [do
 ## Unreleased
 
 - Highlight-to-ask replies now put separate points on their own lines ("- " bullets, or 1. 2. 3. when order matters) instead of one run-on paragraph.
-- The highlight-to-ask box no longer disappears when you click elsewhere on the card. It closes with its new **×** button, Esc, a new highlight, or another button.
+- Highlight-to-ask now opens a chat panel on the right instead of a popup on the card. Anki's window widens to make room, so the card doesn't move or resize, and closing the panel (×) shrinks it back. Your highlight starts the message as `Re "…": `, and the conversation stays across cards until the review session ends.
 
 ## v1.32 — Settings sync between computers (2026-10-03)
 

@@ -271,12 +271,11 @@ def test_ask_prompt_sends_front_only():
 
 def test_highlight_ask_answers_questions_and_edits():
     assert "change nothing" in grading.EDIT_SYSTEM_PROMPT and "without giving away the answer" in grading.EDIT_SYSTEM_PROMPT
-    q = ui.ask_html("question")
-    a = ui.ask_html("answer", ("Changed **Back** <x>", False))
-    assert 'id="ai-ask-bubble"' in q and "what does this term mean" in q and "const first = null;" in q
-    assert "reword this" in a and "Changed <b>Back</b> &lt;x&gt;" in a and "</script>" not in a.split("const first")[1][:80]
-    js = ui.ask_reply_js("x < **y**", True)
-    assert "x &lt; <b>y</b>" in js and js.endswith("true);")
+    html = ui.ask_html()
+    assert 'id="ai-ask-bubble"' in html and "aiStudy:open:" in html and "ai-ask-pop" not in html
+    assert ui.prefix_for("a  b\nc") == 'Re "a b c": '
+    assert ui.prefix_for("x" * 70) == 'Re "' + "x" * 60 + '…": '
+    assert "pycmd(\"close\")" in ui.PANEL_HTML and "pycmd(\"ready\")" in ui.PANEL_HTML
 
 
 def test_question_side_prompt_never_has_the_answer():
