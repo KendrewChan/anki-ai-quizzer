@@ -184,7 +184,10 @@ ASK_CSS = """
 #ai-ask-pop { display: none; position: absolute; z-index: 20; width: min(26em, calc(100vw - 16px)); box-sizing: border-box;
               padding: 0.5em 0.6em; border-radius: 8px; text-align: left; font-size: 0.9em; line-height: 1.4;
               background: var(--canvas, Canvas); color: inherit; border: 1px solid #8886; box-shadow: 0 4px 16px #0004; }
-#ai-ask-quote { font-size: 0.85em; opacity: 0.7; border-left: 3px solid #8886; padding-left: 0.5em; margin-bottom: 0.4em;
+#ai-ask-x { position: absolute; top: 2px; right: 4px; padding: 0 5px; cursor: pointer; opacity: 0.6;
+            font: 700 16px/20px sans-serif; user-select: none; }
+#ai-ask-x:hover { opacity: 1; }
+#ai-ask-quote { margin-right: 1.2em; font-size: 0.85em; opacity: 0.7; border-left: 3px solid #8886; padding-left: 0.5em; margin-bottom: 0.4em;
                 max-height: 4.2em; overflow: hidden; white-space: pre-wrap; }
 #ai-ask-input { width: 100%; box-sizing: border-box; padding: 0.35em 0.5em; font: inherit; border-radius: 6px;
                 border: 1px solid #8888; background: transparent; color: inherit; }
@@ -252,6 +255,7 @@ ASK_JS = """
     input.value = ""; input.disabled = true;
     out.className = ""; out.textContent = "Thinking…";
   });
+  $("ai-ask-x").addEventListener("click", close);
   toastEl.addEventListener("click", () => { toastEl.style.display = "none"; });
 
   window.aiAsk = {
@@ -267,7 +271,10 @@ ASK_JS = """
     },
     down(e) {  // selecting inside an answer box is editing, not asking
       fromField = !!(e.target.closest && e.target.closest("textarea, input, select"));
-      if (!mine(e.target)) close();
+      if (mine(e.target)) return;
+      // An open box stays through plain clicks elsewhere; a new highlight (see up), another button, Esc or the X close it.
+      const control = e.target.closest && e.target.closest("button, a, [role=button]");
+      if (pop.style.display !== "block" || control) close();
     },
     reply(html, err) {  // in the open box, else as a toast (e.g. after an edit redrew the card)
       if (pop.style.display !== "block") { toast(html, err); return; }
@@ -297,7 +304,7 @@ def ask_html(side: str, toast=None) -> str:
     side = "question" | "answer"; toast = (text, is_error) to show on load (the reply to an edit that redrew the card)."""
     first = [grading.rich(toast[0]), toast[1]] if toast else None
     return (f'{ASK_CSS}<div id="ai-ask-bubble" title="Ask AI about this">AI</div>'
-            f'<div id="ai-ask-pop"><div id="ai-ask-quote"></div>'
+            f'<div id="ai-ask-pop"><div id="ai-ask-x" title="Close">\u00d7</div><div id="ai-ask-quote"></div>'
             f'<input id="ai-ask-input" placeholder="{html.escape(ASK_PLACEHOLDER[side])}"><div id="ai-ask-out"></div></div>'
             f'<div id="ai-ask-toast"></div>' + ASK_JS.replace("__TOAST__", json.dumps(first)))
 
