@@ -259,6 +259,12 @@ def ask_new(addcards, panel, sel: str, request: str):
         return
 
     def go(*_):
+        try:
+            send()
+        except Exception as e:  # runs in a Qt callback, where errors would vanish and leave the panel on "Thinking…"
+            panel.reply(f"Failed: {type(e).__name__}: {e}", True)
+
+    def send():
         note = addcards.editor.note
         c = cfg()
         did = addcards.deck_chooser.selected_deck_id
