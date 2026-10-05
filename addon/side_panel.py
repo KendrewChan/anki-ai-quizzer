@@ -15,6 +15,7 @@ from .textutil import rich
 
 WIDTH = 380  # review panel width in px; the main window grows by this much
 ADD_WIDTH = 340
+MIN_WIDTH = 260  # a resizable dock can't be dragged narrower than this
 
 
 class Chat:
@@ -58,21 +59,30 @@ class Chat:
 class ReviewPanel:
     HINT = "Highlight text on the card and click the AI bubble, then ask. Your questions stay here as you review."
 
-    def __init__(self, on_send):
+    def __init__(self, on_send, window=None, hint: str = HINT):
+        """Docked in `window` (default: the main window). Another window's panel can be resized by the user; the
+        main window's is fixed, so the card keeps its size."""
+        self.win = window or mw
+        self.resizable = window is not None
+        self.hint = hint
         self.on_send = on_send
         self.dock = None
         self.chat = None
         self.grown = 0  # px the window was widened by while the panel is open
 
     def _build(self):
-        self.chat = Chat(self.on_send, self.close, self.HINT)
-        self.dock = QDockWidget("AI Study", mw)
+        self.chat = Chat(self.on_send, self.close, self.hint)
+        self.dock = QDockWidget("AI Study", self.win)
         self.dock.setObjectName("aiStudyAskPanel")
         self.dock.setFeatures(QDockWidget.DockWidgetFeature.NoDockWidgetFeatures)  # no float / move; × is in the page
         self.dock.setTitleBarWidget(QWidget())  # empty: the page draws its own header
         self.dock.setWidget(self.chat.web)
-        self.dock.setFixedWidth(WIDTH)
-        mw.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.dock)
+        if self.resizable:
+            self.dock.setMinimumWidth(MIN_WIDTH)
+            self.dock.resize(WIDTH, self.dock.height())
+        else:
+            self.dock.setFixedWidth(WIDTH)
+        self.win.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.dock)
 
     def is_open(self) -> bool:
         return self.dock is not None and not self.dock.isHidden()
@@ -88,11 +98,13 @@ class ReviewPanel:
     def close(self):
         if not self.is_open():
             return
+        shrink = self.dock.width() if self.resizable else self.grown  # the user may have resized it
         self.dock.hide()
         if self.grown:
-            mw.resize(max(mw.minimumWidth(), mw.width() - self.grown), mw.height())
+            self.win.resize(max(self.win.minimumWidth(), self.win.width() - shrink), self.win.height())
         self.grown = 0
-        QTimer.singleShot(0, self._focus_card)
+        if self.win is mw:
+            QTimer.singleShot(0, self._focus_card)
 
     @staticmethod
     def _focus_card():
@@ -108,31 +120,36 @@ class ReviewPanel:
 
     def _grow(self, width: int) -> int:
         """Widen the window by up to `width` px (keeping it on screen); returns what it actually grew by."""
-        if mw.isMaximized() or mw.isFullScreen():
+        win = self.win
+        if win.isMaximized() or win.isFullScreen():
             return 0  # no room to grow: the card area gives way instead
-        before = mw.width()
-        screen = mw.screen().availableGeometry()
-        room = screen.right() + 1 - mw.frameGeometry().left()
+        before = win.width()
+        screen = win.screen().availableGeometry()
+        room = screen.right() + 1 - win.frameGeometry().left()
         if room < before + width:  # not enough space to the right: slide left first
-            mw.move(max(screen.left(), mw.x() - (before + width - room)), mw.y())
-            room = screen.right() + 1 - mw.frameGeometry().left()
-        mw.resize(min(before + width, room), mw.height())
-        return max(0, mw.width() - before)
+            win.move(max(screen.left(), win.x() - (before + width - room)), win.y())
+            room = screen.right() + 1 - win.frameGeometry().left()
+        win.resize(min(before + width, room), win.height())
+        return max(0, win.width() - before)
 
     def show_selection(self, selection: str):
         self.open()
         self.chat.quote(selection)
+
+    def toggle(self):
+        self.close() if self.is_open() else self.open()
 
     def reply(self, text: str, err: bool = False):
         if self.chat is not None:
             self.chat.reply(text, err)
 
 
+BROWSE_HINT = "Select text in the note and click the AI bubble, then ask. I can also edit the note's fields."
+
+
 class AddPanel(QObject):
     """A panel stuck to the right edge of the Add Cards or Browse window, opened and closed from there."""
     HINT = "Ask about the note you're writing: wording, what to put on the back, how to split it into cards."
-
-    BROWSE_HINT = "Select text in the note and click the AI bubble, then ask. I can also edit the note's fields."
 
     def __init__(self, dialog, on_send, hint: str = HINT):
         super().__init__(dialog)
