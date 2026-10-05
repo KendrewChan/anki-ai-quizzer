@@ -34,6 +34,10 @@ Type what you want in plain words — "use opus", "give me 90 seconds to answer"
 
 **Windows login:** **Log in** opens a Claude Code window. Sign in in your browser (if it doesn't open, use the link in that window), and paste the code into that window if it asks for one.
 
+## Browse window
+
+With AI Study on, select text in a note in Anki's Browse window and click the blue **AI** bubble (or **AI Study → Chat about this note** in the menu bar). A chat opens at the window's side about that note: ask questions or ask for changes to its fields. Edits are one undo step (Edit → Undo).
+
 ## Today's Missed (📋 Today's Missed)
 
 Lists the notes whose Missed section was last written today, grouped by deck, with each missed point and how often it was missed. Read-only; a note reviewed again tomorrow moves to tomorrow's list.
