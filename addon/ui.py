@@ -68,6 +68,7 @@ JS = """
   function wire(box) {
     box.addEventListener("keydown", function (e) {
       e.stopPropagation();  // keep Anki's reviewer keys (space, 1-4, e…) out of the text boxes; Enter is a plain newline
+      if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && !e.isComposing) { e.preventDefault(); submit(); }  // grade
     });
   }
 
@@ -135,7 +136,7 @@ JS = """
       if (orig) orig.open = true;
       this.setStatus(msg, true);
     },
-    submitNow() {  // Anki's Space / Show Answer: grade what is typed; python shows the answer itself if "none"
+    submitNow() {  // Anki's Show Answer button: grade what is typed; python shows the answer itself if "none"
       if (submitted) return "busy";
       if (!boxes().some(b => b.value.trim())) return "none";  // no boxes yet, or nothing typed
       submit();
@@ -157,7 +158,7 @@ JS = """
 </script>
 """
 
-HINT = "Enter: next box / submit · Shift+Enter: new line · Enter with all boxes empty: just show the answer"
+HINT = "Ctrl/Cmd+Enter or Show Answer: grade · Space: just show the answer"
 
 
 def question_html(original: str, mode: str) -> str:
