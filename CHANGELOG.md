@@ -4,6 +4,7 @@ What changed in each version, newest first. How the add-on works today is in [do
 
 ## Unreleased
 
+- **📋 Today's Missed** link under the deck list: a page listing today's Missed sections by deck (notes with the most-missed points first), so you can review what you got wrong so far today.
 - Highlight-to-ask now opens a chat panel on the right instead of a popup. The window widens so the card doesn't move; the highlight is quoted above the chat box and kept above your message. The conversation stays across cards; **Clear** empties it. Replies put separate points on their own lines.
 - The chat panels have an **Explain** button above the chat box: one click asks for an explanation of the highlight.
 - Anki's Add Cards window gets an **AI Study** button that opens a chat beside it about the note you're writing (answers only, only when AI Study is on).

@@ -16,7 +16,7 @@ Study in the Anki reviewer with an AI tutor (Claude Code or Codex): it turns eac
 
 ## Use
 
-- Under the deck list (and under **Study Now**): **AI Study: OFF · ⚙ Settings · ✨ Generate/Update Cards**. Click to turn it on or off — Anki remembers your choice next time it starts. Also in **Tools → AI Study mode**.
+- Under the deck list (and under **Study Now**): **AI Study: OFF · ⚙ Settings · ✨ Generate/Update Cards · 📋 Today's Missed**. Click to turn it on or off — Anki remembers your choice next time it starts. Also in **Tools → AI Study mode**.
 - While reviewing: type answers (Enter = next box / submit, Shift+Enter = new line, Space or **Show Answer** work like Enter: they grade if anything is typed, otherwise just show the answer). **Show original** reveals the card's real front. Rewrite question is on by default and the answer boxes appear once they arrive; hover a **?** for a hint. A question with several parts lists them as 3.1, 3.2, … with a hint on each part. Formulas show as rendered math, and the AI bolds at most one key term. To answer a deck's cards as written (faster: one AI call per card), tell Settings "don't rewrite questions for <deck>"; subdecks follow.
 - The verdict shows right below the front of the card (already in view when the answer appears), above the card's answer; the recommended button is outlined. A question you leave empty is marked skipped, not wrong. Your answer is split into points coloured by how right they are, with a short reason on the wrong ones. The card's Back keeps one **Missed** section that adds up over reviews: each point shows how many reviews missed it, most-missed first, in red when often (**Missed append** in settings).
 - **Highlight to ask:** highlight card text and click the blue **AI** bubble. A chat panel opens on the right (the window widens, so the card stays put) with your highlight quoted above the chat box. On the front it helps you understand the question without giving the answer away; on the back it can also change the note (Edit → Undo reverts). The conversation stays as you move between cards; **Explain** above the chat box asks for an explanation of the highlight in one click; **Clear** empties the chat, × closes it.
@@ -33,6 +33,10 @@ Type what you want in plain words — "use opus", "give me 90 seconds to answer"
 **On several computers:** deck prompts, the deck On/Off buttons, Custom Generic Rules, timeouts and Missed append sync with your collection when you press Sync. Provider, model and CLI path stay per computer. Install the add-on on each computer; settings arrive with the first sync. A computer that had settings from an older version merges them in after its first sync; where another computer already set the same thing, that newer setting is kept. If you change the same setting on two computers without syncing in between, the most recent change wins (for decks: per deck; for the rest: the computer whose collection changed last). Sync before switching computers.
 
 **Windows login:** **Log in** opens a Claude Code window. Sign in in your browser (if it doesn't open, use the link in that window), and paste the code into that window if it asks for one.
+
+## Today's Missed (📋 Today's Missed)
+
+Lists the notes whose Missed section was last written today, grouped by deck, with each missed point and how often it was missed. Read-only; a note reviewed again tomorrow moves to tomorrow's list.
 
 ## Generate/Update Cards (✨ Generate/Update Cards)
 

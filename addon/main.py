@@ -17,6 +17,7 @@ from . import config_ops, grading, health, missed, note_chat, state, ui
 from .chat_page import deck_ids, load_config, migrate_once
 from .config_page import ConfigPage
 from .generate_page import GeneratePage
+from .missed_page import MissedPage
 from .session import make_backend, provider_of
 from .side_panel import AddPanel, ReviewPanel
 from .textutil import strip_html
@@ -32,6 +33,7 @@ class State:
         self.cwd = None
         self.page = None
         self.gen_page = None
+        self.missed_page = None
         self.bypass = False  # reveal() is showing the answer: don't intercept it
         self.panel = None  # side_panel.ReviewPanel: the highlight-to-ask chat
         self.action = None
@@ -183,6 +185,8 @@ def on_js_message(handled, message: str, context):
             S.page.open()
         elif message == "aiStudy:generate":
             S.gen_page.open()
+        elif message == "aiStudy:missed":
+            S.missed_page.open()
         return (True, None)
     if not isinstance(context, Reviewer):
         return handled
@@ -374,7 +378,9 @@ def controls_html() -> str:
         ' &nbsp;·&nbsp; '
         '<a href=# onclick="pycmd(\'aiStudy:settings\');return false;">⚙ Settings</a>'
         ' &nbsp;·&nbsp; '
-        '<a href=# onclick="pycmd(\'aiStudy:generate\');return false;">✨ Generate/Update Cards</a></div>'
+        '<a href=# onclick="pycmd(\'aiStudy:generate\');return false;">✨ Generate/Update Cards</a>'
+        ' &nbsp;·&nbsp; '
+        '<a href=# onclick="pycmd(\'aiStudy:missed\');return false;">📋 Today\'s Missed</a></div>'
     )
 
 
@@ -405,6 +411,7 @@ def setup():
     S.page = ConfigPage(ADDON, end_session)
     S.panel = ReviewPanel(ask)
     S.gen_page = GeneratePage(ADDON)
+    S.missed_page = MissedPage(ADDON)
     setup_menu()
     gui_hooks.deck_browser_will_render_content.append(on_deck_browser)
     gui_hooks.overview_will_render_content.append(on_overview)

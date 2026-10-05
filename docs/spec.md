@@ -24,6 +24,7 @@ Run an AI study loop inside the Anki desktop reviewer: the AI turns each card in
 | `grading.py` | Tutor prompts and reply parsing | no |
 | `note_chat.py` | Prompts and replies for chats about a note (highlight-to-ask, Add Cards) | no |
 | `missed.py` | The Missed section of a note | no |
+| `missed_today.py`, `missed_page.py` | 📋 Today's Missed: notes whose Missed section carries today's date (collection query / read-only page) | no / yes |
 | `config_ops.py` | Settings chat prompt, validated config changes, toggles | no |
 | `generate_ops.py` | Generate prompt, reference reading, reply validation | no |
 | `generate_col.py` | AI-GEN staging ops on a `Collection` passed in | no |
@@ -81,6 +82,7 @@ Only active while **AI Study** is ON, and only for cards whose home deck has AI 
 
 **Missed section** (`missed_append`, default on; `missed.py`)
 - The note keeps one `<hr><b>Missed (date)</b> <i>N reviews</i><ul><li><b>[K]</b> point</li>…</ul>`: the latest review's date, the number of graded reviews, and per point how many of them missed it. Points missed often are marked in red (`missed.RED_FROM`).
+- **📋 Today's Missed** (link next to Generate/Update Cards; `missed_today.py`, `missed_page.py`): searches the collection for `"Missed (<today>)"`, keeps notes whose stamp equals today's local date (the same clock that writes it, so Anki's 4am rollover isn't used) and that have points, and lists them by deck, most-missed note first. A note reviewed again on a later day moves to that day. Read-only.
 - Each review adds one to the points missed again and adds new ones; the others keep their count. Points are matched by normalized words, not exact text, so rewording doesn't start a second counter. Most-missed first; capped (`missed.MAX_MISSED`). Older formats are still read.
 - It goes into the first existing field of `Back` → `Back Extra` → the note's last field. The tutor prompt treats it as past gaps, not required content, and asks for repeats in the listed point's own words.
 - A write failure shows a note in the verdict; the review is unaffected.
