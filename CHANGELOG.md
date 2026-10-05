@@ -4,6 +4,7 @@ What changed in each version, newest first. How the add-on works today is in [do
 
 ## Unreleased
 
+- Generate/Update Cards works through a change to every card of a deck (colour-code, shorten, fix wording) in batches of 10 cards. Each batch appears in the staged list as soon as it's done, with `Batch 2 of 5 — 10 of 47 cards done`, a "still working" line, and Submit / Approve all disabled until the run ends. **Stop after this batch** ends it early and keeps what's staged; an error stops it the same way.
 - Note colour scheme: when the AI writes or edits a note field (Generate, Browse and reviewer edits, Add Cards advice), it colours sparingly with one meaning each: blue = term being defined, amber = warning / trade-off, purple = example or number. Never red or green, which stay for grading feedback.
 - **Browse window**: select text in the note editor and click the blue **AI** bubble (or **AI Study → Chat about this note** in the menu bar) to open a chat beside the window about the open note. Like the reviewer's answer side, the AI can answer questions and edit the note's fields (one undo step). Only while AI Study is on.
 - **📋 Today's Missed** link under the deck list: a page listing today's Missed sections by deck (notes with the most-missed points first), so you can review what you got wrong so far today.

@@ -11,6 +11,7 @@ TEMP_DECK = "AI-GEN"
 MAX_REF_CHARS = 150_000  # all reference text sent per message
 MAX_FILES = 300
 MAX_DECK_CHARS = 120_000  # existing cards sent per message
+BATCH_SIZE = 10  # cards per request when a change applies to every existing card
 SKIP_DIRS = {".git", "node_modules", "__pycache__", ".venv", "venv"}
 
 GENERATE_SYSTEM_PROMPT = """You make Anki flashcards for the user from their reference files and requests, and improve their existing cards.
@@ -20,9 +21,9 @@ Everything you create or update is staged in a temporary top-level deck "AI-GEN"
 Each message gives you: the deck list, the reference files (may be empty), cards of decks you asked to read, the cards currently staged, the recent conversation, then the user's request.
 
 Reply with JSON only, no code fences:
-{"reply": "<one or two short sentences: what you staged, or a question>", "read_decks": ["<full deck name>", ...], "changes": [<change>, ...]}
+{"reply": "<one or two short sentences: what you staged, or a question>", "read_decks": ["<full deck name>", ...], "per_card": false, "changes": [<change>, ...]}
 
-read_decks: decks whose existing cards you need to see (to update them, or to avoid duplicates). When the user asks to update/improve/fix cards, or the references clearly belong to an existing deck, and that deck's cards are not shown yet, return read_decks with "changes": [] — the same request comes back with those cards. Reading a deck includes its subdecks. Otherwise return "read_decks": [].
+read_decks: decks whose existing cards you need to see (to update them, or to avoid duplicates). When the user asks to update/improve/fix cards, or the references clearly belong to an existing deck, and that deck's cards are not shown yet, return read_decks with "changes": [] — the same request comes back with those cards. Reading a deck includes its subdecks. Otherwise return "read_decks": []. Set "per_card": true (only together with read_decks) when the request changes each existing card of those decks individually (colour-code, shorten, reformat, fix wording): the cards are then sent to you in small batches. Leave it false for anything that makes new cards or needs the whole deck at once.
 
 A change is one of:
 {"add": {"deck": "<real deck full name>", "type": "basic", "front": "...", "back": "..."}}
@@ -136,8 +137,24 @@ def ref_summary(refs: dict) -> str:
 
 # --- prompt + reply ---
 
+def chunk_notes(loaded: dict, size: int = BATCH_SIZE) -> list:
+    """Existing cards of the read decks (deck name -> [note dict]), each card once, in batches of `size`."""
+    seen, notes = set(), []
+    for deck_notes in loaded.values():
+        for n in deck_notes:
+            if n["id"] not in seen:
+                seen.add(n["id"])
+                notes.append(n)
+    return [notes[i:i + size] for i in range(0, len(notes), size)]
+
+
+def batch_line(index: int, total: int) -> str:
+    return (f"BATCH {index + 1} of {total}: apply the request ONLY to the cards listed under Existing cards. The other "
+            "cards come in other batches, so change nothing else, add no new cards and return no read_decks.")
+
+
 def generate_prompt(message: str, decks: list, refs: dict = None, existing: dict = None, staged: list = None,
-                    history: list = None) -> str:
+                    history: list = None, batch: str = "") -> str:
     """existing: deck name -> [note dict]; staged: [note dict + "deck" (real) + "of"]; history: [(you, ai)].
 
     A note dict is {"id", "type", "deck", "fields": {name: html}}.
@@ -172,6 +189,8 @@ def generate_prompt(message: str, decks: list, refs: dict = None, existing: dict
     if history:
         parts.append("Recent conversation:\n" + "\n".join(f"User: {u}\nYou: {a}" for u, a in history))
     parts.append(f"User: {message}")
+    if batch:
+        parts.append(batch)
     return "\n\n".join(parts)
 
 
@@ -182,7 +201,7 @@ def parse_generate_reply(text: str) -> dict:
     if not isinstance(changes, list) or not isinstance(reads, list):
         raise ValueError("'changes' / 'read_decks' is not a list")
     return {"reply": str(obj.get("reply", "")).strip(), "read_decks": [str(d) for d in reads if str(d).strip()],
-            "changes": [c for c in changes if isinstance(c, dict)]}
+            "per_card": obj.get("per_card") is True, "changes": [c for c in changes if isinstance(c, dict)]}
 
 
 def is_temp(name: str) -> bool:

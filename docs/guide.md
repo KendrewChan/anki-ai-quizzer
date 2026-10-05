@@ -38,6 +38,10 @@ Type what you want in plain words — "use opus", "give me 90 seconds to answer"
 
 With AI Study on, select text in a note in Anki's Browse window and click the blue **AI** bubble (or **AI Study → Chat about this note** in the menu bar). A chat opens at the window's side about that note: ask questions or ask for changes to its fields. Edits are one undo step (Edit → Undo).
 
+## Big rewrites run in batches
+
+When a request changes every card of a deck (e.g. "colour-code my SystemDesign cards"), the AI works 10 cards at a time. Staged cards appear after each batch, the status shows `Batch 2 of 5`, and Submit waits until it's done. Press **Stop after this batch** to end early; the cards already staged stay.
+
 ## Today's Missed (📋 Today's Missed)
 
 Lists the notes whose Missed section was last written today, grouped by deck, with each missed point and how often it was missed. Read-only; a note reviewed again tomorrow moves to tomorrow's list.
