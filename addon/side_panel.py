@@ -34,6 +34,14 @@ class Chat:
 
     def quote(self, selection: str):
         self.js(f"aiPanel.quote({json.dumps(selection)});")
+        QTimer.singleShot(0, self.focus)
+
+    def focus(self):
+        """Put the keyboard in the chat box: the page's own focus() does nothing while another widget (the card, the
+        note editor) still has Qt focus."""
+        self.web.window().activateWindow()
+        self.web.setFocus(Qt.FocusReason.OtherFocusReason)
+        self.web.eval("document.getElementById('cmd') && document.getElementById('cmd').focus();")
 
     def reply(self, text: str, err: bool = False):
         self.js(f"aiPanel.reply({json.dumps(rich(text))}, {json.dumps(err)});")

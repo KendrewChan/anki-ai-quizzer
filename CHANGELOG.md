@@ -4,6 +4,7 @@ What changed in each version, newest first. How the add-on works today is in [do
 
 ## Unreleased
 
+- Highlighting text and clicking **AI** now puts the cursor straight in the chat box, so you can type at once (before, the card or note editor kept the keyboard).
 - Enter in an answer box is now just a new line; it no longer moves to the next box or grades. Space no longer grades either (it only shows the answer). Grade with **Ctrl/Cmd+Enter** in a box or the **Show Answer** button.
 - The chat panels have a **Simpler** button next to Explain: the same explanation in less technical words, with an everyday example.
 - The chat panels have a **Do it** button next to Explain: it tells the AI to make the change it just suggested (the answer side and the Browse window can edit the note; elsewhere it only answers).
