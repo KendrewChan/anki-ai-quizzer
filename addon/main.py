@@ -19,7 +19,7 @@ from .config_page import ConfigPage
 from .generate_page import GeneratePage
 from .missed_page import MissedPage
 from .session import make_backend, provider_of
-from .side_panel import AddPanel, ReviewPanel, SelectionBubble
+from .side_panel import BROWSE_HINT, AddPanel, ReviewPanel, SelectionBubble
 from .textutil import strip_html
 
 ADDON = __name__.split(".")[0]
@@ -296,7 +296,7 @@ def on_browser_will_show(browser):
     about the selected note, which the AI may edit (only while AI Study is on)."""
     if not S.enabled:
         return
-    panel = AddPanel(browser, lambda sel, text: ask_browse(browser, panel, sel, text), AddPanel.BROWSE_HINT)
+    panel = ReviewPanel(lambda sel, text: ask_browse(browser, panel, sel, text), browser, BROWSE_HINT)
     bubble = SelectionBubble(browser.editor.web, panel.show_selection)
     menu = browser.form.menubar.addMenu("AI Study")
     action = menu.addAction("Chat about this note")
