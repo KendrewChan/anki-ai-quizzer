@@ -34,7 +34,7 @@ body { display: flex; flex-direction: column; box-sizing: border-box; padding: 0
 <div id="hd"><span>AI Study</span><span><button id="clr" title="Clear the chat">Clear</button><span id="x" title="Close">&times;</span></span></div>
 <div id="log"><div class="hint">__HINT__</div></div>
 <div id="quote"><span class="lbl">HIGHLIGHTED</span><span id="qtext"></span><span class="rm" title="Remove">&times;</span></div>
-<div id="quick"><button id="explain" title="Explain the highlighted text (or the card)">Explain</button></div>
+<div id="quick"><button id="explain" title="Explain the highlighted text (or the card)">Explain</button> <button id="doit" title="Make the change the AI just suggested">Do it</button></div>
 <textarea id="cmd" rows="3" placeholder="Type your question (Enter to send, Shift+Enter for a new line)"></textarea>
 <script>
 (function () {
@@ -72,6 +72,7 @@ body { display: flex; flex-direction: column; box-sizing: border-box; padding: 0
     send(cmd.value);
   });
   document.getElementById("explain").addEventListener("click", () => { send("Explain this."); cmd.focus(); });
+  document.getElementById("doit").addEventListener("click", () => { send("Do it: make the change you just suggested."); cmd.focus(); });
   window.aiPanel = {
     quote(s) { setQuote(s); cmd.focus(); },  // a new highlight replaces the previous one
     reply(html, err) {
