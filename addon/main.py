@@ -19,7 +19,7 @@ from .config_page import ConfigPage
 from .generate_page import GeneratePage
 from .missed_page import MissedPage
 from .session import make_backend, provider_of
-from .side_panel import AddPanel, ReviewPanel
+from .side_panel import AddPanel, ReviewPanel, SelectionBubble
 from .textutil import strip_html
 
 ADDON = __name__.split(".")[0]
@@ -261,29 +261,81 @@ def ask_answer_side(card, sel: str, request: str):
     prompt = note_chat.edit_prompt(dict(note.items()), request, questions, answers, verdict, deck_rules(card, c), sel)
 
     def on_edited(_cid, result, err):
-        if err:
-            S.panel.reply(f"Failed: {err.message}", True)  # not counted toward disabling AI Study
-            return
-        note = mw.col.get_note(nid)  # fresh: the Missed append may have saved in the meantime
-        changes, unknown = note_chat.plan_field_edit(dict(note.items()), result["fields"])
-        reply = result["reply"] or ("Done." if changes else "No change.")
-        if unknown:
-            reply += f" (ignored unknown fields: {', '.join(unknown)})"
-        if not changes:
-            S.panel.reply(reply, bool(unknown))
-            return
-        for name, value in changes.items():
-            note[name] = value
-        done = f"{reply} Changed: {', '.join(changes)} — Edit → Undo reverts it."
-        (
-            # No initiator: the reviewer sees a note change and redraws the card with the new text.
-            update_note(parent=mw, note=note)
-            .success(lambda _: S.panel.reply(done))
-            .failure(lambda e: S.panel.reply(f"Not saved: {e}", True))
-            .run_in_background()
-        )
+        apply_note_edit(nid, result, err, S.panel)
 
     edit_session().request(cid, prompt, note_chat.parse_edit_reply, c.get("grade_timeout_s", 60), on_edited)
+
+
+def apply_note_edit(nid: int, result, err, panel):
+    """Show the AI's reply in `panel` and write the field changes it asked for, as one undo step."""
+    if err:
+        panel.reply(f"Failed: {err.message}", True)  # not counted toward disabling AI Study
+        return
+    note = mw.col.get_note(nid)  # fresh: the Missed append or the editor may have saved in the meantime
+    changes, unknown = note_chat.plan_field_edit(dict(note.items()), result["fields"])
+    reply = result["reply"] or ("Done." if changes else "No change.")
+    if unknown:
+        reply += f" (ignored unknown fields: {', '.join(unknown)})"
+    if not changes:
+        panel.reply(reply, bool(unknown))
+        return
+    for name, value in changes.items():
+        note[name] = value
+    done = f"{reply} Changed: {', '.join(changes)} — Edit → Undo reverts it."
+    (
+        # No initiator: the reviewer / Browse editor sees a note change and redraws with the new text.
+        update_note(parent=mw, note=note)
+        .success(lambda _: panel.reply(done))
+        .failure(lambda e: panel.reply(f"Not saved: {e}", True))
+        .run_in_background()
+    )
+
+
+def on_browser_will_show(browser):
+    """Browse window: select text in the note editor and click the "AI" bubble (or use the AI Study menu) to chat
+    about the selected note, which the AI may edit (only while AI Study is on)."""
+    if not S.enabled:
+        return
+    panel = AddPanel(browser, lambda sel, text: ask_browse(browser, panel, sel, text), AddPanel.BROWSE_HINT)
+    bubble = SelectionBubble(browser.editor.web, panel.show_selection)
+    menu = browser.form.menubar.addMenu("AI Study")
+    action = menu.addAction("Chat about this note")
+    action.triggered.connect(lambda: panel.toggle() if S.enabled else None)
+    browser._ai_panel = panel  # keep them alive with the window
+    browser._ai_bubble = bubble
+
+
+def ask_browse(browser, panel, sel: str, request: str):
+    """A question or change request about the note open in the Browse editor; answers and edits like the reviewer's
+    answer side."""
+    if not request or not S.enabled or S.disabled:
+        panel.reply("AI Study is off.", True)
+        return
+
+    def go(*_):
+        try:
+            send()
+        except Exception as e:  # runs in a Qt callback, where errors would vanish and leave the panel on "Thinking…"
+            panel.reply(f"Failed: {type(e).__name__}: {e}", True)
+
+    def send():
+        note = browser.editor.note
+        if note is None:
+            panel.reply("Select a single note first.", True)
+            return
+        note = mw.col.get_note(note.id)  # as just saved
+        card = browser.card
+        if card is not None and not active(card):
+            panel.reply("AI Study is off for this deck.", True)
+            return
+        c = cfg()
+        rules = deck_rules(card, c) if card is not None else []
+        prompt = note_chat.edit_prompt(dict(note.items()), request, [], [], None, rules, sel)
+        nid = note.id
+        edit_session().request(nid, prompt, note_chat.parse_edit_reply, c.get("grade_timeout_s", 60),
+                               lambda _cid, result, err: apply_note_edit(nid, result, err, panel))
+
+    browser.editor.call_after_note_saved(go)
 
 
 def on_add_cards_init(addcards):
@@ -417,6 +469,7 @@ def setup():
     gui_hooks.overview_will_render_content.append(on_overview)
     Reviewer._showAnswer = wrap(Reviewer._showAnswer, around_show_answer, "around")
     gui_hooks.add_cards_did_init.append(on_add_cards_init)
+    gui_hooks.browser_will_show.append(on_browser_will_show)
     gui_hooks.card_will_show.append(on_card_will_show)
     gui_hooks.reviewer_did_show_question.append(on_show_question)
     gui_hooks.reviewer_did_show_answer.append(on_show_answer)

@@ -7,7 +7,7 @@
 import json
 
 from aqt import mw
-from aqt.qt import QDockWidget, QEvent, QObject, Qt, QTimer, QVBoxLayout, QWidget
+from aqt.qt import QApplication, QCursor, QDockWidget, QEvent, QObject, QPushButton, Qt, QTimer, QVBoxLayout, QWidget
 from aqt.webview import AnkiWebView
 
 from . import panel_page
@@ -129,14 +129,16 @@ class ReviewPanel:
 
 
 class AddPanel(QObject):
-    """A panel stuck to the right edge of the Add Cards window, opened and closed with a button there."""
+    """A panel stuck to the right edge of the Add Cards or Browse window, opened and closed from there."""
     HINT = "Ask about the note you're writing: wording, what to put on the back, how to split it into cards."
 
-    def __init__(self, dialog, on_send):
+    BROWSE_HINT = "Select text in the note and click the AI bubble, then ask. I can also edit the note's fields."
+
+    def __init__(self, dialog, on_send, hint: str = HINT):
         super().__init__(dialog)
         self.dialog = dialog
         self.box = QWidget(dialog, Qt.WindowType.Tool | Qt.WindowType.FramelessWindowHint)
-        self.chat = Chat(on_send, self.close, self.HINT)
+        self.chat = Chat(on_send, self.close, hint)
         layout = QVBoxLayout(self.box)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self.chat.web)
@@ -164,6 +166,10 @@ class AddPanel(QObject):
         g = self.dialog.frameGeometry()
         self.box.setGeometry(g.right() + 1, g.top(), ADD_WIDTH, g.height())
 
+    def show_selection(self, selection: str):
+        self.open()
+        self.chat.quote(selection)
+
     def reply(self, text: str, err: bool = False):
         self.chat.reply(text, err)
 
@@ -175,3 +181,49 @@ class AddPanel(QObject):
             elif t in (QEvent.Type.Hide, QEvent.Type.Close):
                 self.box.hide()
         return False
+
+
+class SelectionBubble(QObject):
+    """A small "AI" button that appears at the mouse after text is selected in `web` (the Browse editor, where the
+    page can't be scripted like the reviewer's); clicking it passes the selection to `on_ask`."""
+
+    def __init__(self, web, on_ask):
+        super().__init__(web)
+        self.web = web
+        self.on_ask = on_ask
+        self.text = ""
+        self.button = QPushButton("AI", web.window())
+        self.button.setWindowFlags(Qt.WindowType.Tool | Qt.WindowType.FramelessWindowHint)
+        self.button.setFocusPolicy(Qt.FocusPolicy.NoFocus)  # clicking it must not take the selection away
+        self.button.setStyleSheet("QPushButton { background:#2a6fd6; color:white; border-radius:8px; padding:3px 9px; "
+                                  "font-weight:600; }")
+        self.button.clicked.connect(self._ask)
+        QApplication.instance().installEventFilter(self)
+
+    def _ask(self):
+        self.button.hide()
+        if self.text:
+            self.on_ask(self.text)
+
+    def _check(self):
+        self.text = self.web.selectedText().strip()
+        if not self.text or not self.web.isVisible():
+            self.button.hide()
+            return
+        self.button.adjustSize()
+        pos = QCursor.pos()
+        self.button.move(pos.x() + 8, pos.y() - self.button.height() - 8)
+        self.button.show()
+
+    def eventFilter(self, obj, event):
+        t = event.type()
+        if t == QEvent.Type.MouseButtonRelease and isinstance(obj, QWidget) and (
+                obj is self.web or self.web.isAncestorOf(obj)):
+            QTimer.singleShot(50, self._check)  # the page updates its selection just after the release
+        elif t == QEvent.Type.MouseButtonPress and obj is not self.button:
+            self.button.hide()
+        return False
+
+    def close(self):
+        QApplication.instance().removeEventFilter(self)
+        self.button.hide()

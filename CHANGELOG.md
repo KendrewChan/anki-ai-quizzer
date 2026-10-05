@@ -4,6 +4,7 @@ What changed in each version, newest first. How the add-on works today is in [do
 
 ## Unreleased
 
+- **Browse window**: select text in the note editor and click the blue **AI** bubble (or **AI Study → Chat about this note** in the menu bar) to open a chat beside the window about the open note. Like the reviewer's answer side, the AI can answer questions and edit the note's fields (one undo step). Only while AI Study is on.
 - **📋 Today's Missed** link under the deck list: a page listing today's Missed sections by deck (notes with the most-missed points first), so you can review what you got wrong so far today.
 - Highlight-to-ask now opens a chat panel on the right instead of a popup. The window widens so the card doesn't move; the highlight is quoted above the chat box and kept above your message. The conversation stays across cards; **Clear** empties it. Replies put separate points on their own lines.
 - The chat panels have an **Explain** button above the chat box: one click asks for an explanation of the highlight.
