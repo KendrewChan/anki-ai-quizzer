@@ -44,6 +44,7 @@ class State:
         self.card_id = None
         self.ctx = {}  # card_id -> {"q", "a", "questions"}
         self.verdicts = {}  # card_id -> (verdict, questions, answers)
+        self.key_reveal = False  # Space/Enter was just pressed: the coming _showAnswer must not grade
         self.no_grade = set()  # card ids whose grading failed: Space shows the answer instead of retrying
         self.failures = 0
         self.disabled = None  # reason string once AI is off for this session
@@ -130,11 +131,18 @@ def reveal():
         S.bypass = False
 
 
+def around_enter_key(reviewer, *args, _old):
+    """Space/Enter pressed in the reviewer: remember it, so the answer is shown without grading."""
+    S.key_reveal = reviewer.state == "question"
+    return _old(reviewer, *args)
+
+
 def around_show_answer(reviewer, *args, _old):
-    """Anki's Space and Show Answer: with AI Study on for the card they grade what is typed, but only if any box has
-    text; otherwise they just show the answer. Anything else keeps Anki's behaviour."""
+    """Anki's Show Answer button grades what is typed, but only if any box has text; otherwise it just shows the answer.
+    Space/Enter (around_enter_key) never grade, so a stray key can't start a grading. Anything else keeps Anki's behaviour."""
     card = reviewer.card
-    if (S.bypass or reviewer.state != "question" or card is None or card.id in S.no_grade
+    key, S.key_reveal = S.key_reveal, False
+    if (S.bypass or key or reviewer.state != "question" or card is None or card.id in S.no_grade
             or card.id not in S.ctx or not active(card)):
         return _old(reviewer, *args)
 
@@ -146,6 +154,7 @@ def around_show_answer(reviewer, *args, _old):
 
 
 def on_show_question(card):
+    S.key_reveal = False
     S.card_id = card.id
     S.no_grade.discard(card.id)
     S.verdicts.pop(card.id, None)
@@ -467,6 +476,7 @@ def setup():
     setup_menu()
     gui_hooks.deck_browser_will_render_content.append(on_deck_browser)
     gui_hooks.overview_will_render_content.append(on_overview)
+    Reviewer.onEnterKey = wrap(Reviewer.onEnterKey, around_enter_key, "around")
     Reviewer._showAnswer = wrap(Reviewer._showAnswer, around_show_answer, "around")
     gui_hooks.add_cards_did_init.append(on_add_cards_init)
     gui_hooks.browser_will_show.append(on_browser_will_show)
