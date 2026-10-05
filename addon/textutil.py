@@ -20,6 +20,14 @@ def strip_html(text: str) -> str:
     return re.sub(r"\s*\n\s*", "\n", text).strip()
 
 
+def safe_html(text: str) -> str:
+    """A note field's HTML for display in an add-on page: formatting and colours kept, scripts and handlers removed."""
+    text = re.sub(r"(?is)<(script|style|iframe|object|embed)\b.*?</\1\s*>", "", text)
+    text = re.sub(r"(?i)</?(script|style|iframe|object|embed)\b[^>]*>", "", text)
+    text = re.sub(r"""(?i)\s+on\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)""", "", text)
+    return re.sub(r"""(?i)(href|src)(\s*=\s*["']?)\s*javascript:""", r"\1\2#", text)
+
+
 def parse_json_reply(text: str) -> dict:
     """Extract the first JSON object from a model reply (tolerates code fences / stray prose)."""
     start = text.find("{")

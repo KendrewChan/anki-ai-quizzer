@@ -11,7 +11,7 @@ from aqt.qt import QFileDialog
 from . import generate_col, generate_ops, health
 from .chat_page import ChatPage, deck_ids
 from .config_page import CSS as CONFIG_CSS
-from .textutil import strip_html
+from .textutil import safe_html, strip_html
 from .session import make_backend, provider_of
 
 TEMP = html.escape(generate_ops.TEMP_DECK)
@@ -20,6 +20,7 @@ MAX_READ_ROUNDS = 2  # times the AI may ask to read decks before answering one m
 
 CSS = CONFIG_CSS + """
 <style>
+#cfg { max-width: min(96vw, 120em); margin: 0.5em auto; padding: 0 0.8em; }  /* cards need room: wider and tighter than Settings */
 #refrow { display: flex; gap: 0.4em; align-items: center; margin: 0.6em 0 0.2em; }
 #ref { flex: 1; padding: 0.45em 0.6em; font: inherit; border-radius: 6px; border: 1px dashed #8888;
        background: transparent; color: inherit; cursor: default; outline: none; }
@@ -39,7 +40,10 @@ CSS = CONFIG_CSS + """
 .stg summary { cursor: pointer; }
 .stg .kind { font-size: 0.75em; padding: 0 0.35em; border-radius: 4px; border: 1px solid #8888; margin-right: 0.4em; }
 .stg .kind.upd { color: #b07400; border-color: #b0740088; } .stg .kind.new { color: #27864a; border-color: #27864a88; }
-.stg .fld { margin: 0.2em 0 0.4em 1em; } .stg .fld b { opacity: 0.7; font-weight: 500; }
+.stg .fld { margin: 0.3em 0 0.5em 1em; } .stg .lbl { opacity: 0.7; font-size: 0.85em; }
+.stg .fval { margin-top: 0.1em; overflow-wrap: anywhere; } .stg .fval ul, .stg .fval ol { margin: 0.2em 0; padding-left: 1.4em; }
+.stg .fval table { border-collapse: collapse; } .stg .fval td, .stg .fval th { border: 1px solid #8886; padding: 0.15em 0.5em; }
+.stg .fval code { background: #8882; padding: 0 0.25em; border-radius: 3px; } .stg .fval hr { opacity: 0.4; }
 .stg .btns { margin-top: 0.8em; } .stg .btns button { margin: 0 0.5em 0 0; }
 </style>
 """
@@ -379,7 +383,7 @@ class GeneratePage(ChatPage):
         """Question (first field) as the row, the other non-empty fields inside it when expanded."""
         values = list(fields.items())
         question = f'{prefix}<span class="q">{html.escape(strip_html(values[0][1]) if values else "")}</span>'
-        rest = "".join(f'<div class="fld"><b>{html.escape(k)}:</b> {html.escape(strip_html(v))}</div>'
+        rest = "".join(f'<div class="fld"><span class="lbl">{html.escape(k)}</span><div class="fval">{safe_html(v)}</div></div>'
                        for k, v in values[1:] if v.strip())  # the question is already in the summary
         return (f'<details data-id="{key}"><summary>{question}</summary>{rest}</details>' if rest
                 else f'<div class="plain">{question}</div>')
