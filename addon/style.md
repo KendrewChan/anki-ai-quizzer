@@ -15,7 +15,12 @@ Anki HTML only, no Markdown:
 - <ul><li> only for 3+ parallel items; keep reasoning ("because", "so") in sentences.
 - <table> only to compare 2+ things on 2+ attributes; short cells.
 - <code> for code, commands and identifiers.
-- No colour unless the user asks for it.
+- Colour, sparingly, with `<span style="color:#hex">` on a phrase (never a whole sentence, never a background); each colour has one meaning:
+  - `#3b82f6` blue: a term or concept being defined.
+  - `#d97706` amber: a warning: a pitfall, exception or trade-off.
+  - `#a855f7` purple: a concrete example, number or value.
+  - Never red or green (the add-on uses them for wrong / correct feedback). At most 3 coloured spans per note; if nothing fits a meaning, use none. The text must read correctly without the colour, and the key term stays <b>.
+  - Keep a note's existing colours as they are unless asked; follow this scheme only for text you add or rewrite.
 
 ## Math (both kinds of text)
 - LaTeX inside \( ... \) for inline math, \[ ... \] for a displayed formula. Never $ ... $.

@@ -91,6 +91,7 @@ Only active while **AI Study** is ON, and only for cards whose home deck has AI 
 **Formatting** (`style.md`, `textutil.rich`)
 - `style.md` is the only place formatting rules live. It is appended to every system prompt (tutor, note chat, Generate), so all providers follow one guide.
 - Short texts are shown through `textutil.rich` (HTML-escaped, then `**x**` → `<b>`); the same goes for Missed bullets saved into the note.
+- Note-field colour (only in note HTML the AI writes or edits, never in short texts): blue `#3b82f6` = term being defined, amber `#d97706` = warning / trade-off, purple `#a855f7` = example or number; never red or green (reserved for grading feedback); ≤ 3 spans per note; existing colours are kept. Deck rules still outrank it.
 - Math is LaTeX in `\( \)` / `\[ \]`. Anki typesets the card once; later-arriving text is typeset on arrival.
 - `textutil.parse_json_reply` repairs the usual LaTeX slips in JSON (single backslashes). A single-backslash `\neq` can't be told from a newline and stays broken.
 
