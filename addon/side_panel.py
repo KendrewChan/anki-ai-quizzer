@@ -193,8 +193,11 @@ class SelectionBubble(QObject):
         self.on_ask = on_ask
         self.text = ""
         self.button = QPushButton("AI", web.window())
-        self.button.setWindowFlags(Qt.WindowType.Tool | Qt.WindowType.FramelessWindowHint)
-        self.button.setFocusPolicy(Qt.FocusPolicy.NoFocus)  # clicking it must not take the selection away
+        # The bubble must never take focus: when the Browse window loses it, the editor drops its selection highlight.
+        self.button.setWindowFlags(Qt.WindowType.Tool | Qt.WindowType.FramelessWindowHint
+                                   | Qt.WindowType.WindowDoesNotAcceptFocus)
+        self.button.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
+        self.button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.button.setStyleSheet("QPushButton { background:#2a6fd6; color:white; border-radius:8px; padding:3px 9px; "
                                   "font-weight:600; }")
         self.button.clicked.connect(self._ask)
@@ -220,8 +223,10 @@ class SelectionBubble(QObject):
         if t == QEvent.Type.MouseButtonRelease and isinstance(obj, QWidget) and (
                 obj is self.web or self.web.isAncestorOf(obj)):
             QTimer.singleShot(50, self._check)  # the page updates its selection just after the release
-        elif t == QEvent.Type.MouseButtonPress and obj is not self.button:
-            self.button.hide()
+        elif t == QEvent.Type.MouseButtonPress and self.button.isVisible():
+            # Qt delivers the press to the bubble's window object, not the button, so compare positions instead.
+            if not self.button.frameGeometry().contains(event.globalPosition().toPoint()):
+                self.button.hide()
         return False
 
     def close(self):
