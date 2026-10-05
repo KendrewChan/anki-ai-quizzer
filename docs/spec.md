@@ -143,6 +143,7 @@ A main-window state (`aiStudyGenerate`). It works whether AI Study is on or off,
   - Text files only. Binary and non-UTF-8 files are listed as skipped. Hidden files, `.git`, `node_modules`, `__pycache__` and venvs are ignored.
   - Limits: ≤ 300 files and ≤ 150k characters per message; anything cut off is reported.
   - Re-read on every message.
+- **Batches**: the AI sets `per_card: true` with `read_decks` when the request changes each existing card individually. If the read decks hold more than `BATCH_SIZE` (10) cards, the add-on resends the request once per batch (`generate_ops.chunk_notes`, each card once) with a `BATCH i of n` line that limits the AI to the listed cards. Each batch's changes are applied (one undo step) and shown before the next batch starts; the status reads `Batch i of n — k of N cards done`, the staged list says it is still working, and Submit / Approve all are disabled. **Stop after this batch** (or an error) ends the run with what is staged and a summary of how many cards were processed. Chat history gets one entry for the whole run.
 - **Fresh CLI process per message**: references and cards would overflow one long conversation, so the last 3 exchanges are resent as context.
 - **Updating existing cards**:
   - The AI may return `read_decks`. The add-on then loads those decks' notes (subdecks included, raw field HTML, ≤ 120k chars) and resends the request, for at most 2 rounds.

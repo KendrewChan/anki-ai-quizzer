@@ -47,7 +47,7 @@ CSS = CONFIG_CSS + """
 JS = """
 <script>
 window.aiGen = {
-  update(logHtml, refInfo, refBad, stagedHtml, status, busy) {
+  update(logHtml, refInfo, refBad, stagedHtml, status, busy, batching) {
     const log = document.getElementById("log");
     log.innerHTML = logHtml; log.scrollTop = log.scrollHeight;
     const info = document.getElementById("refinfo");
@@ -66,6 +66,7 @@ window.aiGen = {
     } else { st.textContent = status; }
     st.className = busy ? "busy" : "";
     this.busy = busy;
+    document.getElementById("stop").style.display = batching ? "" : "none";
     const cmd = document.getElementById("cmd");
     cmd.disabled = busy; if (!busy) cmd.focus();
   },
@@ -105,6 +106,9 @@ class GeneratePage(ChatPage):
         self.ref = ""  # reference path as chosen (validated on every use)
         self.loaded = {}  # deck name -> [note dict] the AI asked to read
         self._status = ""  # shown again if the page reopens while the AI is still working
+        self._batching = False  # a request is being worked through in batches of cards
+        self._stop_requested = False  # Stop was pressed: finish the current batch, then end
+        self._tally = None  # counts, rejected changes and last reply gathered over the batches of one request
         self._backend = None
         self._ref_cache = (None, None)  # (path, (info, is_bad)): folders aren't rescanned on every redraw
 
@@ -130,6 +134,9 @@ class GeneratePage(ChatPage):
             self._update(None)
         elif command in ("pickdir", "pickfile"):
             self._pick(command == "pickdir")
+        elif command == "stop":
+            self._stop_requested = True
+            self._update("Stopping after this batch…")
         elif self.busy:  # collection changes wait until the AI's reply has been applied
             return
         elif command in ("approve", "unapprove"):
@@ -157,7 +164,8 @@ class GeneratePage(ChatPage):
 
     # --- AI ---
 
-    def _send(self, text: str, rounds: int = 0):
+    def _send(self, text: str, rounds: int = 0, batch=None):
+        """batch: (index, chunks) when a per-card request is worked through in groups of cards, else None."""
         if not rounds:
             self.replies.append((text, "you"))
         refs = None
@@ -165,30 +173,47 @@ class GeneratePage(ChatPage):
             try:
                 refs = generate_ops.read_references(self.ref)
             except ValueError as e:
+                self._batching = False
                 self.say(f"Reference: {e}", err=True)
                 return
         decks = list(deck_ids())
         staged = generate_col.staged(mw.col)
-        prompt = generate_ops.generate_prompt(text, decks, refs, self.loaded, staged, list(self.history))
+        existing, line = self.loaded, ""
+        if batch:
+            index, chunks = batch
+            existing = {}
+            for n in chunks[index]:
+                existing.setdefault(n["deck"], []).append(n)
+            line = generate_ops.batch_line(index, len(chunks))
+        prompt = generate_ops.generate_prompt(text, decks, refs, existing, staged, list(self.history), line)
         self.busy = True
-        self._status = "Reading your decks, thinking…" if rounds else "Thinking — this can take a minute…"
+        if batch:
+            done = sum(len(c) for c in chunks[:index])
+            self._status = (f"Batch {index + 1} of {len(chunks)} — {done} of {sum(map(len, chunks))} cards done")
+        else:
+            self._status = "Reading your decks, thinking…" if rounds else "Thinking — this can take a minute…"
         self._update(self._status)
         self._stop()  # fresh process per message: references are resent each time, a long chat would overflow
         self._backend = make_backend(self.cfg(), generate_ops.GENERATE_SYSTEM_PROMPT, self.tmpdir(),
                                      mw.taskman.run_on_main)
         self._backend.request(0, prompt, generate_ops.parse_generate_reply, TIMEOUT_S,
-                              lambda _id, result, err: self._on_reply(text, rounds, staged, decks, result, err))
+                              lambda _id, result, err: self._on_reply(text, rounds, staged, decks, result, err, batch))
 
-    def _on_reply(self, text, rounds, staged, decks, result, err):
+    def _on_reply(self, text, rounds, staged, decks, result, err, batch=None):
         self._stop()  # also when the user left meanwhile: the reply is still applied and shown on return
         if err:
-            self.busy = False
+            self.busy = self._batching = False
             health.LAST_ERROR[provider_of(self.cfg())] = err.message
-            self.say(f"AI error: {err.message} — open ⚙ Settings to fix it.", err=True)
+            lost = ""
+            if batch:
+                index, chunks = batch
+                lost = (f" Stopped at batch {index + 1} of {len(chunks)}: "
+                        f"{sum(len(c) for c in chunks[:index])} of {sum(map(len, chunks))} cards done.")
+            self.say(f"AI error: {err.message} — open ⚙ Settings to fix it.{lost}", err=True)
             return
         rejected = []
         new_reads = []
-        for name in result["read_decks"]:
+        for name in ([] if batch else result["read_decks"]):
             try:
                 name = generate_ops.resolve_read(name, decks)
             except ValueError as e:
@@ -198,25 +223,58 @@ class GeneratePage(ChatPage):
                 self.loaded[name] = generate_col.read_deck(mw.col, name)
                 new_reads.append(name)
         if new_reads and not result["changes"] and rounds < MAX_READ_ROUNDS:
-            self._send(text, rounds + 1)  # same request again, now with those cards
+            chunks = generate_ops.chunk_notes(self.loaded)
+            if result["per_card"] and len(chunks) > 1:
+                self._batching, self._stop_requested = True, False
+                self._tally = {"counts": {}, "rejected": [], "reply": ""}
+                self._send(text, rounds + 1, (0, chunks))  # the same request, a few cards at a time
+            else:
+                self._send(text, rounds + 1)  # the same request again, now with those cards
             return
         existing = {n["id"]: n for notes in self.loaded.values() for n in notes}
         ops, bad = generate_ops.plan_changes(result["changes"], decks, existing, staged)
         rejected += bad
         reply = result["reply"] or "Done."
-        self.history.append((text, reply))
 
         def done(counts=None):
+            if batch:
+                self._batch_done(text, batch, counts, rejected, reply)
+                return
             self.busy = False
+            self.history.append((text, reply))
             parts = [f"{v} {k}" for k, v in (counts or {}).items() if v]
             summary = f" ({', '.join(parts)} — see AI-GEN below)" if parts else ""
             self.say(" ".join([reply + summary, *rejected]), err=bool(rejected))
 
+        def failed():
+            self.busy = self._batching = False
+
         if ops:
-            self._run_op(lambda col: _Result(generate_col.apply_ops(col, ops)), done,
-                         on_fail=lambda: setattr(self, "busy", False))
+            self._run_op(lambda col: _Result(generate_col.apply_ops(col, ops)), done, on_fail=failed)
         else:
             done()
+
+    def _batch_done(self, text, batch, counts, rejected, reply):
+        """One batch was applied (and is on screen): start the next, or finish."""
+        index, chunks = batch
+        tally = self._tally
+        for k, v in (counts or {}).items():
+            tally["counts"][k] = tally["counts"].get(k, 0) + v
+        tally["rejected"] += rejected
+        tally["reply"] = reply
+        if index + 1 < len(chunks) and not self._stop_requested:
+            self._send(text, 1, (index + 1, chunks))
+            return
+        self.busy = self._batching = False
+        total = sum(map(len, chunks))
+        done = sum(len(c) for c in chunks[:index + 1])
+        parts = [f"{v} {k}" for k, v in tally["counts"].items() if v]
+        staged = f" ({', '.join(parts)} — see AI-GEN below)" if parts else ""
+        head = (f"Done: {total} cards processed in {len(chunks)} batches." if done == total else
+                f"Stopped after batch {index + 1} of {len(chunks)}: {done} of {total} cards processed, "
+                f"{total - done} not.")
+        self.history.append((text, f"{head} {tally['reply']}".strip()))
+        self.say(" ".join([head + staged, *tally["rejected"]]), err=bool(tally["rejected"]))
 
     def _run_op(self, op, on_done, on_fail=None):
         def failed(e):
@@ -244,7 +302,7 @@ class GeneratePage(ChatPage):
         if mw.state != self.STATE:
             return
         info, bad = self._ref_info()
-        args = [self._log_html(), info, bad, self._staged_html(), status or "", self.busy]
+        args = [self._log_html(), info, bad, self._staged_html(), status or "", self.busy, self._batching]
         mw.web.eval(f"window.aiGen && aiGen.update({', '.join(json.dumps(a) for a in args)});")
 
     def _ref_info(self) -> tuple:
@@ -270,8 +328,11 @@ class GeneratePage(ChatPage):
 
     def _staged_html(self) -> str:
         staged = generate_col.staged(mw.col)
+        working = ('<div class="hint" style="color:#2a6fd6;opacity:1">⏳ Still working — more cards will appear below. '
+                   'Submit and Approve all wait until it finishes.</div>' if self._batching else "")
         if not staged:
-            return f'<div class="sect stg"><h3>{TEMP}</h3><div style="opacity:.6">Nothing staged yet.</div></div>'
+            return (f'<div class="sect stg"><h3>{TEMP}</h3>{working}'
+                    f'<div style="opacity:.6">Nothing staged yet.</div></div>')
         out, deck = [], None
         for i, s in enumerate(staged, 1):
             if s["deck"] != deck:
@@ -301,15 +362,17 @@ class GeneratePage(ChatPage):
                        f'<div class="main">{body}</div>{acts}</div>')
         ok = sum(1 for s in staged if s["ok"])
         pending = len(staged) - ok
-        submit = (f'<button class="submit" onclick="pycmd(\'aiGen:submit\')">Submit {ok} approved</button>' if ok
+        submit = (f'<button class="submit" onclick="pycmd(\'aiGen:submit\')"{" disabled" if self._batching else ""}>'
+                  f'Submit {ok} approved</button>' if ok
                   else '<button class="submit" disabled>Submit (approve cards first)</button>')
         buttons = (f'<div class="btns">'
-                   + (f'<button onclick="pycmd(\'aiGen:approve\')">Approve all ({pending})</button>' if pending
+                   + (f'<button onclick="pycmd(\'aiGen:approve\')"{" disabled" if self._batching else ""}>'
+                      f'Approve all ({pending})</button>' if pending
                       else f'<button onclick="pycmd(\'aiGen:unapprove:{",".join(str(s["id"]) for s in staged)}\')">'
                            f'Unapprove all ({ok})</button>')
                    + f'<button onclick="pycmd(\'aiGen:discard\')">Discard all</button>{submit}</div>'
                    f'<div class="hint">Approved cards stay here until you Submit — keep generating meanwhile.</div>')
-        return f'<div class="sect stg"><h3>{TEMP} — waiting for you</h3>{"".join(out)}{buttons}</div>'
+        return f'<div class="sect stg"><h3>{TEMP} — waiting for you</h3>{working}{"".join(out)}{buttons}</div>'
 
     @staticmethod
     def _card_body(prefix: str, fields: dict, key: str) -> str:
@@ -343,5 +406,7 @@ class GeneratePage(ChatPage):
             f'<button title="Clear" onclick="aiGen.setRef(\'\');pycmd(\'aiGen:clearref\')">×</button></div>'
             f'<div id="refinfo"></div>'
             f'<input id="cmd" value="{html.escape(self.draft)}" placeholder="What cards should I make or fix?">'
-            f'<div id="status"></div><div id="sections"></div></div>{JS}'
+            f'<div id="status"></div>'
+            f'<button id="stop" style="display:none" onclick="pycmd(\'aiGen:stop\')">Stop after this batch</button>'
+            f'<div id="sections"></div></div>{JS}'
         )

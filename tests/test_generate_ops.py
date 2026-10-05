@@ -97,6 +97,29 @@ def test_prompt_and_reply():
     assert "AI-GEN" not in p.split("Reference")[0]  # temp deck hidden from the deck list
     assert p.endswith("User: make cards") and "User: hi\nYou: hello" in p
     r = g.parse_generate_reply('```json\n{"reply": "ok", "read_decks": ["Biology"], "changes": [{"remove": 1}, 3]}\n```')
-    assert r == {"reply": "ok", "read_decks": ["Biology"], "changes": [{"remove": 1}]}
+    assert r == {"reply": "ok", "read_decks": ["Biology"], "per_card": False, "changes": [{"remove": 1}]}
     with pytest.raises(ValueError):
         g.parse_generate_reply('{"changes": {"remove": 1}}')
+
+
+def _note(i, deck="D"):
+    return {"id": i, "type": "basic", "deck": deck, "fields": {"Front": f"q{i}"}}
+
+
+def test_chunk_notes_batches_each_card_once():
+    loaded = {"A": [_note(1), _note(2), _note(3)], "A::Sub": [_note(3), _note(4)]}  # 3 is listed under both decks
+    assert [[n["id"] for n in b] for b in g.chunk_notes(loaded, 2)] == [[1, 2], [3, 4]]
+    assert g.chunk_notes({}, 2) == []
+
+
+def test_batch_line_goes_after_the_request():
+    prompt = g.generate_prompt("colour them", DECKS, existing={"A": [_note(1)]}, batch=g.batch_line(1, 3))
+    assert prompt.rstrip().endswith("return no read_decks.") and "BATCH 2 of 3" in prompt
+    assert prompt.index("User: colour them") < prompt.index("BATCH 2 of 3")
+    assert "BATCH" not in g.generate_prompt("x", DECKS)
+
+
+def test_per_card_flag_needs_a_real_true():
+    assert g.parse_generate_reply('{"reply": "", "read_decks": ["A"], "per_card": true}')["per_card"] is True
+    for raw in ('{"reply": ""}', '{"reply": "", "per_card": "true"}', '{"reply": "", "per_card": 1}'):
+        assert g.parse_generate_reply(raw)["per_card"] is False
