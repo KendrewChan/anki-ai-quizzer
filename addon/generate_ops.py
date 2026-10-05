@@ -39,6 +39,8 @@ Rules:
 - When references are given, base cards on them; don't invent facts they don't contain unless asked. Don't duplicate existing or staged cards.
 - update/edit: use the card's own field names, include only fields you change, give their whole new content. Keep any "Missed (date)" section in a field exactly as it is.
 - To change a staged card use edit/remove, not a new add. Staged cards marked "approved" were approved by the user: leave them alone unless asked (editing one un-approves it).
+- Deck rules (given below when the user wrote any) are the user's own instructions for a deck and its subdecks: follow them for every card you add or change there. They outrank your defaults.
+- When you colour-code or highlight cards, begin "reply" with "Goal: <the study goal you inferred for the deck>." so the user can correct it.
 - If the request is unclear, ask a short question in "reply" with no changes."""
 GENERATE_SYSTEM_PROMPT += "\n\n" + STYLE_GUIDE
 
@@ -154,7 +156,7 @@ def batch_line(index: int, total: int) -> str:
 
 
 def generate_prompt(message: str, decks: list, refs: dict = None, existing: dict = None, staged: list = None,
-                    history: list = None, batch: str = "") -> str:
+                    history: list = None, batch: str = "", rules: list = None) -> str:
     """existing: deck name -> [note dict]; staged: [note dict + "deck" (real) + "of"]; history: [(you, ai)].
 
     A note dict is {"id", "type", "deck", "fields": {name: html}}.
@@ -165,6 +167,9 @@ def generate_prompt(message: str, decks: list, refs: dict = None, existing: dict
         parts.append(f"Reference files ({refs['path']}):\n{body}")
     else:
         parts.append("Reference files: (none)")
+    if rules:
+        parts.append("Deck rules (the user's instructions per deck; they also apply to its subdecks):\n"
+                     + "\n".join(f"- {name}: {p}" for name, p in rules))
     if existing:
         out, used = [], 0
         for name, notes in existing.items():

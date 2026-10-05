@@ -15,12 +15,14 @@ Anki HTML only, no Markdown:
 - <ul><li> only for 3+ parallel items; keep reasoning ("because", "so") in sentences.
 - <table> only to compare 2+ things on 2+ attributes; short cells.
 - <code> for code, commands and identifiers.
-- Colour, sparingly, with `<span style="color:#hex">` on a phrase (never a whole sentence, never a background); each colour has one meaning:
-  - `#3b82f6` blue: a term or concept being defined.
-  - `#d97706` amber: a warning: a pitfall, exception or trade-off.
-  - `#a855f7` purple: a concrete example, number or value.
-  - Never red or green (the add-on uses them for wrong / correct feedback). At most 3 coloured spans per note; if nothing fits a meaning, use none. The text must read correctly without the colour, and the key term stays <b>.
-  - Keep a note's existing colours as they are unless asked; follow this scheme only for text you add or rewrite.
+- Colour marks what the reader must RECALL, with `<span style="color:#hex">` on a phrase (never a whole sentence, never a background). First decide the deck's study goal from its deck rules, its name and the notes around it (e.g. "system-design interviews", "HSK vocabulary for an exam"), then mark what someone with that goal must be able to say from memory, not what merely looks important. Each colour has one meaning:
+  - `#3b82f6` blue: the core: the main concept, decision or answer the section is about.
+  - `#d97706` amber: the why: the trade-off, the reason an alternative is rejected, the pitfall or exception.
+  - `#a855f7` purple: anchors: numbers, thresholds, names and formulas that can't be derived.
+  - Cover every section: each paragraph, bullet group or numbered step gets its core point (1-3 spans), so a long note ends up with about one coloured phrase per 40-60 words; a short note may have 2-3. Colour at most about a fifth of the text.
+  - A span is a cue of 1-6 words: the key noun phrase or the decision itself, not a whole clause or sentence.
+  - Never red or green (the add-on uses them for wrong / correct feedback). The text must read correctly without the colour, and the key term stays <b>.
+  - Keep a note's existing colours as they are unless asked; follow this scheme only for text you add or rewrite. A deck rule can change the meanings, the colours or the amount.
 
 ## Math (both kinds of text)
 - LaTeX inside \( ... \) for inline math, \[ ... \] for a displayed formula. Never $ ... $.

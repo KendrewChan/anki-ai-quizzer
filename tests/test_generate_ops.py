@@ -123,3 +123,10 @@ def test_per_card_flag_needs_a_real_true():
     assert g.parse_generate_reply('{"reply": "", "read_decks": ["A"], "per_card": true}')["per_card"] is True
     for raw in ('{"reply": ""}', '{"reply": "", "per_card": "true"}', '{"reply": "", "per_card": 1}'):
         assert g.parse_generate_reply(raw)["per_card"] is False
+
+
+def test_deck_rules_reach_the_prompt():
+    p = g.generate_prompt("colour them", DECKS, rules=[("Biology", "I'm studying for the MCAT")])
+    assert "Deck rules" in p and "- Biology: I'm studying for the MCAT" in p
+    assert p.index("Deck rules") < p.index("User: colour them")
+    assert "Deck rules" not in g.generate_prompt("x", DECKS)
