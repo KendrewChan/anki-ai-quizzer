@@ -4,6 +4,7 @@ What changed in each version, newest first. How the add-on works today is in [do
 
 ## Unreleased
 
+- Better colour coding: the AI now judges what to colour against the deck's study goal (it states it as `Goal: …` in Generate), covers every section of a long note instead of 3 spans, and marks short cues (core concept blue, trade-off / pitfall amber, numbers and names purple). Generate now also receives your deck prompts, which it never did before, so write the deck's purpose in its prompt.
 - Generate/Update Cards shows each card's fields as formatted HTML (lists, tables, bold, code and the note colours) instead of one line of plain text, and the page is wider with less padding. Scripts and event handlers in fields are removed first.
 - Generate/Update Cards works through a change to every card of a deck (colour-code, shorten, fix wording) in batches of 10 cards. Each batch appears in the staged list as soon as it's done, with `Batch 2 of 5 — 10 of 47 cards done`, a "still working" line, and Submit / Approve all disabled until the run ends. **Stop after this batch** ends it early and keeps what's staged; an error stops it the same way.
 - Note colour scheme: when the AI writes or edits a note field (Generate, Browse and reviewer edits, Add Cards advice), it colours sparingly with one meaning each: blue = term being defined, amber = warning / trade-off, purple = example or number. Never red or green, which stay for grading feedback.

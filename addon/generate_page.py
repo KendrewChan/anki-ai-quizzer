@@ -189,7 +189,10 @@ class GeneratePage(ChatPage):
             for n in chunks[index]:
                 existing.setdefault(n["deck"], []).append(n)
             line = generate_ops.batch_line(index, len(chunks))
-        prompt = generate_ops.generate_prompt(text, decks, refs, existing, staged, list(self.history), line)
+        c = self.cfg()
+        prompts = c.get("deck_prompts") or {}
+        rules = [(name, prompts[i].strip()) for name, i in deck_ids().items() if str(prompts.get(i, "")).strip()]
+        prompt = generate_ops.generate_prompt(text, decks, refs, existing, staged, list(self.history), line, rules)
         self.busy = True
         if batch:
             done = sum(len(c) for c in chunks[:index])
