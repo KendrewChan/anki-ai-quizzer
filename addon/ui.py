@@ -67,12 +67,7 @@ JS = """
 
   function wire(box) {
     box.addEventListener("keydown", function (e) {
-      e.stopPropagation();  // keep Anki's reviewer keys (space, 1-4, e…) out of the text boxes
-      if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
-        e.preventDefault();
-        const all = boxes(), i = all.indexOf(box);
-        if (i < all.length - 1) all[i + 1].focus(); else submit();
-      }
+      e.stopPropagation();  // keep Anki's reviewer keys (space, 1-4, e…) out of the text boxes; Enter is a plain newline
     });
   }
 
