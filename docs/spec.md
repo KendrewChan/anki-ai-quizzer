@@ -107,6 +107,7 @@ A main-window state (`aiStudyConfig`, **← Back** → deck list).
 - The log shows the latest 3 replies; rejected changes appear in red inside the reply. The Settings AI gets the real model in use, never lists or guesses model names, and points to the Model dropdown.
 - **Configurations**:
   - Provider and Model rows: dropdowns. The model list is loaded live from the CLI and never stored.
+  - The Model row shows the real model id, looked up once in the background. If the lookup fails (e.g. the provider's CLI isn't installed) it shows the configured model or `unavailable` and isn't retried until the config changes or the page is reopened, so the page doesn't redraw in a loop.
   - Login state, timeouts, and the CLI version with **Update**.
   - **Missed append**: On/Off toggle. `config_ops.TOGGLES` is the single source for each toggle's label and help text. Clicks go through `apply_changes`. Each toggle has a CSS **?** help bubble.
   - Plain controls always work, even when the provider's AI is broken.

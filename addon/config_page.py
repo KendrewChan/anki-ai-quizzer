@@ -124,6 +124,7 @@ class ConfigPage(ChatPage):
         self.logged_in = None
         self.selected = None  # full deck name chosen in the Deck Settings tree
         self._probing = set()  # (provider, model) lookups in flight
+        self._probe_failed = set()  # lookups that failed (e.g. CLI not installed): not retried until config changes
 
     # --- the interface fixes.Fixer uses (cfg() comes from ChatPage) ---
 
@@ -142,6 +143,7 @@ class ConfigPage(ChatPage):
         if rejected is not None:
             rejected += [line for line in log if line.startswith("✗")]
         if new != cfg:
+            self._probe_failed.clear()
             chat_page.save_config(self.addon, new, cfg)
             self.on_config_changed()
             self._stop()
@@ -158,6 +160,7 @@ class ConfigPage(ChatPage):
     # --- page ---
 
     def _entered(self):
+        self._probe_failed.clear()
         self._refresh_auth()
         self.fixer.check_on_open()
         if self.busy:  # a message sent before leaving is still being answered
@@ -278,18 +281,23 @@ class ConfigPage(ChatPage):
         if actual:
             return actual
         key = (provider, configured)
+        if key in self._probe_failed:  # retrying on every redraw would redraw forever (and reset open dropdowns)
+            return configured or "unavailable"
         if key not in self._probing:
             self._probing.add(key)
             cwd = self.tmpdir()
 
             def work():
+                failed = False
                 try:
                     probe_model(provider, path, configured, cwd)
-                except Exception:  # stays "checking…"; the next real call fills it in
-                    pass
+                except Exception:  # the next real call or a config change fills it in
+                    failed = True
 
                 def done():
                     self._probing.discard(key)
+                    if failed:
+                        self._probe_failed.add(key)
                     self._update(None)
 
                 mw.taskman.run_on_main(done)
