@@ -4,6 +4,10 @@ What changed in each version, newest first. How the add-on works today is in [do
 
 ## Unreleased
 
+- Asking the AI to edit the note on the back of a card no longer moves the keyboard to the card. Before, your next keys in the chat could grade the card (Space/Enter → next question) or open windows (E, B, A…). An edit that adds a card (a new cloze, Add Reverse) also no longer jumps to the next card.
+- Python errors that pass through the add-on are now also written to `user_files/error.log` (Anki shows them in a dialog and keeps nothing), so an occasional error can be diagnosed afterwards.
+- **Add Cards**: the AI can now search your other notes (e.g. to check for duplicates or match your style) instead of saying it can't see them. It asks the add-on for an Anki search, read-only, up to 3 per message and 20 notes each; the reply says what it searched for. It still has no file or shell access.
+- **Add Cards**: the AI Study chat is now docked inside the Add Cards window (it was a separate floating window that didn't stay attached) and can be dragged wider or narrower. It can also fill in or change the note's fields when you ask, in the editor only; nothing is saved until you click Add.
 - The reviewer's chat panel can now be dragged wider or narrower, like the Browse window's (it was fixed at one width).
 - Highlighting text and clicking **AI** now puts the cursor straight in the chat box, so you can type at once (before, the card or note editor kept the keyboard).
 - Enter in an answer box is now just a new line; it no longer moves to the next box or grades. Space no longer grades either (it only shows the answer). Grade with **Ctrl/Cmd+Enter** in a box or the **Show Answer** button.

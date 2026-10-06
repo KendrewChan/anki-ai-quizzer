@@ -249,7 +249,7 @@ def test_parse_edit_reply_and_plan():
     assert r["reply"] == "Fixed."
     changes, unknown = note_chat.plan_field_edit({"Front": "Q", "Back": "B"}, r["fields"])
     assert changes == {"Back": "B2"} and unknown == ["Nope"]
-    assert note_chat.parse_edit_reply('{"reply": "Unclear."}') == {"reply": "Unclear.", "fields": {}}
+    assert note_chat.parse_edit_reply('{"reply": "Unclear."}') == {"reply": "Unclear.", "fields": {}, "search": ""}
     with pytest.raises(ValueError):
         note_chat.parse_edit_reply('{"fields": ["x"]}')
 
@@ -307,8 +307,10 @@ def test_highlight_ask_answers_questions_and_edits():
     panel = panel_page.panel_html("Ask <me>")
     assert "pycmd(\"hide\")" in panel and "Ask &lt;me&gt;" in panel and "HIGHLIGHTED" in panel and 'content: "> "' in panel and 'content: "● "' in panel and "id=\"clr\"" in panel and "id=\"explain\"" in panel
     p = note_chat.new_note_prompt({"Front": "Q?", "Back": ""}, "better wording?", "Q", [("D", "terse")])
-    assert p.startswith("NEW NOTE") and "[Front]\nQ?" in p and "Highlighted:\nQ" in p and p.endswith("better wording?")
-    assert "NEW NOTE" in note_chat.EDIT_SYSTEM_PROMPT
+    assert p.startswith("NEW NOTE") and "[Front]\nQ?" in p and "Highlighted:\nQ" in p
+    assert "User's request:\nbetter wording?" in p and '"search": "<Anki search query>"' in p and "read the user's other notes" in p
+    assert "NEW NOTE" in note_chat.EDIT_SYSTEM_PROMPT and "fill in or change a field" in note_chat.EDIT_SYSTEM_PROMPT
+    assert "\"fields\" is always {}" not in note_chat.EDIT_SYSTEM_PROMPT.split("NEW NOTE")[1]
 
 
 def test_question_side_prompt_never_has_the_answer():
@@ -342,3 +344,15 @@ def test_keep_mode_shows_original_plainly_and_allows_no_questions():
         grading.parse_added_questions("not json")
     keep = grading.ask_prompt("Q", [("D", "sections")], sharp=False)
     assert "never repeat or rephrase it" in keep and '"questions": []' in keep
+
+
+def test_new_note_search_protocol():
+    assert note_chat.parse_edit_reply('{"reply": "", "fields": {}, "search": " deck:Bio "}')["search"] == "deck:Bio"
+    assert '"search"' in note_chat.EDIT_SYSTEM_PROMPT and "never tell the user you can't see" in note_chat.EDIT_SYSTEM_PROMPT
+    notes = [{"deck": "Bio::Ch3", "type": "Basic", "fields": {"Front": "<b>ATP</b> is?", "Back": "x" * 500}}]
+    b = note_chat.search_block("atp", notes, 25)
+    assert 'SEARCH RESULTS for "atp"' in b and "25 matching note(s) (first 1 of 25)" in b and "Front: ATP is?" in b
+    assert "x" * note_chat.FIELD_CHARS in b and "x" * (note_chat.FIELD_CHARS + 1) not in b and "No more searches" not in b
+    assert "No more searches: answer now." in note_chat.search_block("atp", notes, 1, last=True)
+    assert "No notes match." in note_chat.search_block("zzz", [], 0)
+    assert "The search failed: bad" in note_chat.search_block("(", [], 0, error="bad")
