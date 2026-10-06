@@ -4,6 +4,7 @@ What changed in each version, newest first. How the add-on works today is in [do
 
 ## Unreleased
 
+- Fixed: choosing a provider whose CLI isn't installed (e.g. Codex) made ⚙ Settings redraw non-stop, so the dropdowns closed before you could pick and you couldn't switch back. The Model row now shows `unavailable` and the page stays still.
 - Asking the AI to edit the note on the back of a card no longer moves the keyboard to the card. Before, your next keys in the chat could grade the card (Space/Enter → next question) or open windows (E, B, A…). An edit that adds a card (a new cloze, Add Reverse) also no longer jumps to the next card.
 - Python errors that pass through the add-on are now also written to `user_files/error.log` (Anki shows them in a dialog and keeps nothing), so an occasional error can be diagnosed afterwards.
 - **Add Cards**: the AI can now search your other notes (e.g. to check for duplicates or match your style) instead of saying it can't see them. It asks the add-on for an Anki search, read-only, up to 3 per message and 20 notes each; the reply says what it searched for. It still has no file or shell access.
