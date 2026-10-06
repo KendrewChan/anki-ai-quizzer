@@ -13,13 +13,13 @@ from aqt.overview import Overview
 from aqt.qt import QAction, QDialogButtonBox
 from aqt.reviewer import Reviewer
 
-from . import config_ops, grading, health, missed, note_chat, state, ui
+from . import config_ops, errorlog, grading, health, missed, note_chat, state, ui
 from .chat_page import deck_ids, load_config, migrate_once
 from .config_page import ConfigPage
 from .generate_page import GeneratePage
 from .missed_page import MissedPage
 from .session import make_backend, provider_of
-from .side_panel import BROWSE_HINT, AddPanel, ReviewPanel, SelectionBubble
+from .side_panel import ADD_HINT, BROWSE_HINT, ReviewPanel, SelectionBubble
 from .textutil import strip_html
 
 ADDON = __name__.split(".")[0]
@@ -270,13 +270,27 @@ def ask_answer_side(card, sel: str, request: str):
     prompt = note_chat.edit_prompt(dict(note.items()), request, questions, answers, verdict, deck_rules(card, c), sel)
 
     def on_edited(_cid, result, err):
-        apply_note_edit(nid, result, err, S.panel)
+        apply_note_edit(nid, result, err, S.panel, mw.reviewer, lambda: redraw_edited(nid))
 
     edit_session().request(cid, prompt, note_chat.parse_edit_reply, c.get("grade_timeout_s", 60), on_edited)
 
 
-def apply_note_edit(nid: int, result, err, panel):
-    """Show the AI's reply in `panel` and write the field changes it asked for, as one undo step."""
+def redraw_edited(nid: int):
+    """Show the reviewer's card with the AI's edit, keeping the keyboard in the chat box. Anki's own redraw focuses the
+    card, so the next keys typed for the chat would hit reviewer shortcuts (Space/Enter grade, E opens the editor), and
+    an edit that adds a card (a new cloze, Add Reverse) would make it jump to the next card."""
+    r = mw.reviewer
+    if mw.state != "review" or r.card is None or r.card.nid != nid:
+        return  # moved on meanwhile: the next card shows the edit anyway
+    typing = S.panel.has_focus()
+    r._redraw_current_card()
+    if typing:
+        S.panel.chat.focus()
+
+
+def apply_note_edit(nid: int, result, err, panel, initiator=None, on_saved=None):
+    """Show the AI's reply in `panel` and write the field changes it asked for, as one undo step. With no initiator
+    every screen redraws itself; the reviewer passes itself and redraws in `on_saved`."""
     if err:
         panel.reply(f"Failed: {err.message}", True)  # not counted toward disabling AI Study
         return
@@ -291,12 +305,17 @@ def apply_note_edit(nid: int, result, err, panel):
     for name, value in changes.items():
         note[name] = value
     done = f"{reply} Changed: {', '.join(changes)} — Edit → Undo reverts it."
+
+    def saved(_):
+        panel.reply(done)
+        if on_saved:
+            on_saved()
+
     (
-        # No initiator: the reviewer / Browse editor sees a note change and redraws with the new text.
         update_note(parent=mw, note=note)
-        .success(lambda _: panel.reply(done))
+        .success(saved)
         .failure(lambda e: panel.reply(f"Not saved: {e}", True))
-        .run_in_background()
+        .run_in_background(initiator=initiator)
     )
 
 
@@ -351,7 +370,7 @@ def on_add_cards_init(addcards):
     """An "AI Study" button in the Add Cards window opens/closes a chat panel at its side (only while AI Study is on)."""
     if not S.enabled:
         return
-    panel = AddPanel(addcards, lambda sel, text: ask_new(addcards, panel, sel, text))
+    panel = ReviewPanel(lambda sel, text: ask_new(addcards, panel, sel, text), addcards, ADD_HINT)
     button = addcards.form.buttonBox.addButton("AI Study", QDialogButtonBox.ButtonRole.ActionRole)
     button.setAutoDefault(False)  # Enter in the editor must not press it
     button.clicked.connect(lambda: panel.toggle() if S.enabled else None)
@@ -359,7 +378,8 @@ def on_add_cards_init(addcards):
 
 
 def ask_new(addcards, panel, sel: str, request: str):
-    """A question about the note being written in the Add Cards window. Answers only; nothing is ever written."""
+    """A question or change request about the note being written in the Add Cards window. The AI may fill in or change
+    its fields (in the editor only: the note isn't saved until the user adds it)."""
     if not request or not S.enabled or S.disabled:
         panel.reply("AI Study is off.", True)
         return
@@ -376,9 +396,62 @@ def ask_new(addcards, panel, sel: str, request: str):
         did = addcards.deck_chooser.selected_deck_id
         rules = config_ops.deck_chain(mw.col.decks.name(did), deck_ids(), c.get("deck_prompts") or {})
         prompt = note_chat.new_note_prompt(dict(note.items()) if note else {}, request, sel, rules)
-        edit_session().request(0, prompt, note_chat.parse_edit_reply, c.get("grade_timeout_s", 60), reply_only(panel))
+        new_note_request(addcards, panel, prompt, c.get("grade_timeout_s", 60))
 
     addcards.editor.call_after_note_saved(go)  # the field being typed in counts too
+
+
+def new_note_request(addcards, panel, prompt: str, timeout: float, found: str = "", searched: tuple = ()):
+    """Send the Add Cards prompt; while the AI asks to search the collection, run the search (read-only, the AI has no
+    other access to it) and ask again with the results appended. Every request carries the full prompt, so it works
+    for the stateless Codex backend too."""
+    def on_result(_cid, result, err):
+        query = result["search"] if result else ""
+        if err or not query or len(searched) >= note_chat.MAX_SEARCHES:
+            apply_new_note_edit(addcards, panel, result, err, searched)
+            return
+        block = search_notes(query, last=len(searched) + 1 >= note_chat.MAX_SEARCHES)
+        new_note_request(addcards, panel, prompt, timeout, found + block, searched + (query,))
+
+    edit_session().request(0, prompt + found, note_chat.parse_edit_reply, timeout, on_result)
+
+
+def search_notes(query: str, last: bool) -> str:
+    """The AI's Anki search query run on the collection -> the text block for its next prompt."""
+    try:
+        ids = mw.col.find_notes(query)
+        notes = []
+        for nid in ids[:note_chat.MAX_RESULTS]:
+            n = mw.col.get_note(nid)
+            cards = n.cards()
+            deck = mw.col.decks.name(cards[0].odid or cards[0].did) if cards else "?"
+            notes.append({"deck": deck, "type": n.note_type()["name"], "fields": dict(n.items())})
+        return note_chat.search_block(query, notes, len(ids), last)
+    except Exception as e:  # a bad search syntax is the AI's to fix, not a failure of the chat
+        return note_chat.search_block(query, [], 0, last, error=str(e))
+
+
+def apply_new_note_edit(addcards, panel, result, err, searched: tuple = ()):
+    """Show the AI's reply in `panel` and put the field changes it asked for into the Add Cards editor."""
+    if err:
+        panel.reply(f"Failed: {err.message}", True)
+        return
+    note = addcards.editor.note  # the live editor note: the user may have typed since the request
+    if note is None:
+        panel.reply("The note is gone.", True)
+        return
+    changes, unknown = note_chat.plan_field_edit(dict(note.items()), result["fields"])
+    reply = result["reply"] or ("Done." if changes else "No change.")
+    if unknown:
+        reply += f" (ignored unknown fields: {', '.join(unknown)})"
+    if changes:
+        for name, value in changes.items():
+            note[name] = value
+        addcards.editor.loadNote()
+        reply += f" Changed: {', '.join(changes)}."
+    if searched:
+        reply += f" (Searched: {'; '.join(searched)})"
+    panel.reply(reply, bool(unknown) and not changes)
 
 
 def append_missed(bullets: list):
@@ -469,6 +542,7 @@ def on_sync_finished():
 
 
 def setup():
+    errorlog.install()  # tracebacks from this add-on also go to user_files/error.log
     S.page = ConfigPage(ADDON, end_session)
     S.panel = ReviewPanel(ask)
     S.gen_page = GeneratePage(ADDON)

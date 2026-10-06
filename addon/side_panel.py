@@ -1,20 +1,19 @@
 """The AI chat panel on the right of an Anki window.
 
 `Chat` is the page and its bridge (the conversation lives in the page, so it survives card changes).
-`ReviewPanel` docks it in the main window and widens the window by its width, so the card keeps its size and position.
-`AddPanel` attaches it to the right edge of the Add Cards window and follows that window around."""
+`ReviewPanel` docks it in the main window (or any QMainWindow: Browse, Add Cards) and widens the window by its width,
+so the card keeps its size and position."""
 
 import json
 
 from aqt import mw
-from aqt.qt import QApplication, QCursor, QDockWidget, QEvent, QObject, QPushButton, Qt, QTimer, QVBoxLayout, QWidget
+from aqt.qt import QApplication, QCursor, QDockWidget, QEvent, QObject, QPushButton, Qt, QTimer, QWidget
 from aqt.webview import AnkiWebView
 
 from . import panel_page
 from .textutil import rich
 
 WIDTH = 380  # review panel width in px; the main window grows by this much
-ADD_WIDTH = 340
 MIN_WIDTH = 260  # the dock can't be dragged narrower than this
 
 
@@ -146,61 +145,14 @@ class ReviewPanel:
         if self.chat is not None:
             self.chat.reply(text, err)
 
+    def has_focus(self) -> bool:
+        """The keyboard is in the panel (the web view or its internal focus proxy)."""
+        w = QApplication.focusWidget()
+        return self.is_open() and w is not None and (w is self.chat.web or self.chat.web.isAncestorOf(w))
+
 
 BROWSE_HINT = "Select text in the note and click the AI bubble, then ask. I can also edit the note's fields."
-
-
-class AddPanel(QObject):
-    """A panel stuck to the right edge of the Add Cards or Browse window, opened and closed from there."""
-    HINT = "Ask about the note you're writing: wording, what to put on the back, how to split it into cards."
-
-    def __init__(self, dialog, on_send, hint: str = HINT):
-        super().__init__(dialog)
-        self.dialog = dialog
-        self.box = QWidget(dialog, Qt.WindowType.Tool | Qt.WindowType.FramelessWindowHint)
-        self.chat = Chat(on_send, self.close, hint)
-        layout = QVBoxLayout(self.box)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(self.chat.web)
-        dialog.installEventFilter(self)
-
-    def is_open(self) -> bool:
-        return not self.box.isHidden()
-
-    def toggle(self):
-        self.close() if self.is_open() else self.open()
-
-    def open(self):
-        d = self.dialog
-        screen = d.screen().availableGeometry()
-        over = d.frameGeometry().right() + 1 + ADD_WIDTH - (screen.right() + 1)
-        if over > 0 and not d.isMaximized():  # no room on the right: slide the window left
-            d.move(max(screen.left(), d.x() - over), d.y())
-        self._place()
-        self.box.show()
-
-    def close(self):
-        self.box.hide()
-
-    def _place(self):
-        g = self.dialog.frameGeometry()
-        self.box.setGeometry(g.right() + 1, g.top(), ADD_WIDTH, g.height())
-
-    def show_selection(self, selection: str):
-        self.open()
-        self.chat.quote(selection)
-
-    def reply(self, text: str, err: bool = False):
-        self.chat.reply(text, err)
-
-    def eventFilter(self, obj, event):
-        if obj is self.dialog and not self.box.isHidden():
-            t = event.type()
-            if t in (QEvent.Type.Move, QEvent.Type.Resize):
-                self._place()
-            elif t in (QEvent.Type.Hide, QEvent.Type.Close):
-                self.box.hide()
-        return False
+ADD_HINT = "Ask about the note you're writing: wording, what to put on the back, how to split it into cards. I can also fill in or change its fields."
 
 
 class SelectionBubble(QObject):
