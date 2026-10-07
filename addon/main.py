@@ -13,7 +13,7 @@ from aqt.overview import Overview
 from aqt.qt import QAction, QDialogButtonBox
 from aqt.reviewer import Reviewer
 
-from . import config_ops, errorlog, grading, health, missed, note_chat, state, ui
+from . import assistant, config_ops, errorlog, grading, health, missed, note_chat, state, ui
 from .ai_window import AIWindow
 from .assistant import Context, Conversation
 from .tab_page import deck_ids, load_config, migrate_once
@@ -305,6 +305,7 @@ def on_browser_will_show(browser):
     action.triggered.connect(lambda: chat.panel.toggle() if S.enabled else None)
     browser._ai_chat = chat  # keep them alive with the window
     browser._ai_bubble = bubble
+    browser.destroyed.connect(lambda *_: chat.close())  # stop its CLI
 
 
 def browse_context(browser, done):
@@ -340,6 +341,7 @@ def on_add_cards_init(addcards):
     button.setAutoDefault(False)  # Enter in the editor must not press it
     button.clicked.connect(lambda: chat.panel.toggle() if S.enabled else None)
     addcards._ai_chat = chat  # keep it alive with the window
+    addcards.destroyed.connect(lambda *_: chat.close())  # stop its CLI
 
 
 def add_cards_context(addcards, done):
@@ -401,12 +403,13 @@ def on_show_answer(card):
 
 
 def end_session(*_args):
-    """Leaving the reviewer or closing the profile: kill the process; the next session rebuilds it from config."""
+    """Leaving the reviewer or closing the profile: kill the grading process; the next session rebuilds it from config.
+    The chat panel closes; its conversation stays until Clear or the profile closes."""
     if S.session is not None:
         S.session.close()
         S.session = None
-    if S.chat is not None:
-        S.chat.reset()
+    if S.panel is not None:
+        S.panel.close()
     S.reset()
 
 
@@ -422,6 +425,7 @@ def on_config_changed():
 def on_profile_close():
     end_session()
     S.window.close()
+    assistant.close_all()
 
 
 # --- toggle + AI Window link ---

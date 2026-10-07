@@ -261,8 +261,7 @@ def test_verdict_html_has_no_ask_box():
 def test_style_guide_in_every_system_prompt():
     from addon import generate_ops
     assert "\\( ... \\)" in textutil.STYLE_GUIDE
-    for prompt in (grading.system_prompt([]), grading.system_prompt(["be terse"]), assistant_ops.system_prompt([]),
-                   assistant_ops.system_prompt(assistant_ops.SECTIONS)):
+    for prompt in (grading.system_prompt([]), grading.system_prompt(["be terse"]), assistant_ops.system_prompt()):
         assert textutil.STYLE_GUIDE in prompt
     assert textutil.STYLE_GUIDE not in note_chat.NOTE_RULES + generate_ops.CARDS_RULES  # once, from the chat
 
