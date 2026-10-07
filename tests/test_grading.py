@@ -302,6 +302,8 @@ def test_highlight_ask_answers_questions_and_edits():
     assert "change nothing" in note_chat.NOTE_RULES and "without giving away the answer" in note_chat.NOTE_RULES
     html = ui.ask_html()
     assert 'id="ai-ask-bubble"' in html and "aiStudy:open:" in html and "ai-ask-pop" not in html
+    assert 'title="Close" style="display:none"' in panel_page.panel_html("h", closable=False)
+    assert 'id="quick" style="display:none"' in panel_page.panel_html("h", quick=False)
     panel = panel_page.panel_html("Ask <me>")
     assert "pycmd(\"hide\")" in panel and "Ask &lt;me&gt;" in panel and "HIGHLIGHTED" in panel and 'content: "> "' in panel and 'content: "● "' in panel and "id=\"clr\"" in panel and "id=\"explain\"" in panel
     p = note_chat.new_note_context({"Front": "Q?", "Back": ""}, [("D", "terse")])

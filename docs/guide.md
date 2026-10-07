@@ -26,7 +26,7 @@ Study in the Anki reviewer with an AI tutor (Claude Code or Codex): it turns eac
 
 One window for the add-on's AI features: **⚙ Settings**, **✨ Generate/Update** and **📋 Today's Missed** as tabs on the left, and a chat on the right. It's a separate window, so you can keep it open while you review.
 
-The chat works like a general AI assistant: ask anything, and it can search and read the web. It can also act on your Anki from any tab: change settings, make or update cards, or go through what you missed today. The tab you're on tells it what you're looking at, and it loads anything else it needs. It remembers the conversation until you press **Clear** or quit Anki (closing the window keeps it). Nothing is saved between Anki runs: deck prompts and rules are where lasting instructions belong. **💬 Chat** on the left shows or hides it.
+The chat works like a general AI assistant: ask anything, and it can search and read the web. It can also act on your Anki from any tab: change settings, make or update cards, or go through what you missed today. The tab you're on tells it what you're looking at, and it loads anything else it needs. It remembers the conversation until you press **Clear** or quit Anki (closing the window keeps it). Nothing is saved between Anki runs: deck prompts and rules are where lasting instructions belong. The chat is always open on the right. Highlight text in any tab and click the blue **AI** bubble to ask about it.
 
 ## Settings (⚙ Settings)
 

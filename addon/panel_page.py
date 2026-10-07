@@ -33,7 +33,7 @@ body { display: flex; flex-direction: column; box-sizing: border-box; padding: 0
 #cmd { width: 100%; box-sizing: border-box; margin-top: 0.5em; padding: 0.5em; font: inherit; border-radius: 6px; resize: none;
        border: 1px solid #8888; background: transparent; color: inherit; }
 </style>
-<div id="hd"><span>AI Study</span><span><button id="clr" title="Clear the chat">Clear</button><span id="x" title="Close">&times;</span></span></div>
+<div id="hd"><span>AI Study</span><span><button id="clr" title="Clear the chat">Clear</button><span id="x" title="Close"__NOX__>&times;</span></span></div>
 <div id="log"><div class="hint">__HINT__</div></div>
 <div id="quote"><span class="lbl">HIGHLIGHTED</span><span id="qtext"></span><span class="rm" title="Remove">&times;</span></div>
 <div id="quick"__NOQUICK__><button id="explain" title="Explain the highlighted text (or the card)">Explain</button> <button id="simpler" title="Explain in simpler, less technical terms, with an everyday example">Simpler</button> <button id="doit" title="Make the change the AI just suggested">Do it</button></div>
@@ -117,7 +117,9 @@ body { display: flex; flex-direction: column; box-sizing: border-box; padding: 0
 """
 
 
-def panel_html(hint: str, quick: bool = True) -> str:
+def panel_html(hint: str, quick: bool = True, closable: bool = True) -> str:
     """The side panel's page; `hint` is the grey line shown while the conversation is empty; quick: the Explain /
-    Simpler / Do it buttons (about a card)."""
-    return _PANEL_HTML.replace("__HINT__", html.escape(hint)).replace("__NOQUICK__", "" if quick else ' style="display:none"')
+    Simpler / Do it buttons (about a card); closable: the × (the AI Window's chat is always open)."""
+    hidden = ' style="display:none"'
+    return (_PANEL_HTML.replace("__HINT__", html.escape(hint)).replace("__NOQUICK__", "" if quick else hidden)
+            .replace("__NOX__", "" if closable else hidden))

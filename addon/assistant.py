@@ -58,13 +58,13 @@ class _Turn:
 
 
 class Conversation:
-    def __init__(self, addon: str, host, context, hint: str, window=None, quick: bool = True):
+    def __init__(self, addon: str, host, context, hint: str, window=None, quick: bool = True, closable: bool = True):
         """host: the AI Window (its Settings and Generate/Update tabs). context(selection, done) calls done(Context),
         or done("<why not>") when the chat can't be used there right now."""
         self.addon = addon
         self.host = host
         self.context = context
-        self.panel = ReviewPanel(self.send, window, hint, self._on_command, quick)
+        self.panel = ReviewPanel(self.send, window, hint, self._on_command, quick, closable)
         self.history = deque(maxlen=assistant_ops.HISTORY)  # (user message, reply), for CLIs that don't remember
         self.turn = None  # the message being answered
         self.backend = None  # the chat's CLI; Claude's process keeps the conversation

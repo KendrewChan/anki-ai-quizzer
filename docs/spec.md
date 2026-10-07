@@ -107,8 +107,9 @@ Only active while **AI Study** is ON, and only for cards whose home deck has AI 
 
 A window of its own (a `QMainWindow`, like Browse), so it can stay open while reviewing. Opened from **🤖 AI Window** on the home screen and the deck overview (next to the AI Study ON/OFF link) and from **Tools → AI Window**; it works whether AI Study is on or off.
 
-- Tabs on the left: **⚙ Settings**, **✨ Generate/Update**, **📋 Today's Missed** (`tab_page.Tab` subclasses; one web view, redrawn on a tab change). **💬 Chat** under them shows or hides the chat.
-- The AI chat is docked on the right (`side_panel.ReviewPanel`, without the Explain / Simpler / Do it buttons): opening the window opens it and widens the window by its width.
+- Tabs on the left: **⚙ Settings**, **✨ Generate/Update**, **📋 Today's Missed** (`tab_page.Tab` subclasses; one web view, redrawn on a tab change). Every tab uses the same full-width layout and the page scrollbar always takes its room, so switching tabs doesn't shift anything.
+- The AI chat is docked on the right and always open (`side_panel.ReviewPanel` without × and without the Explain / Simpler / Do it buttons); the window is widened by its width when first shown.
+- Highlighting text in a tab shows the **AI** bubble (`side_panel.SelectionBubble`, as in Browse); clicking it quotes the text in the chat.
 - Closing the window keeps the conversation for the next open; a message still being answered (a batch run, say) finishes and its cards are staged.
 - Closing the profile closes the window.
 

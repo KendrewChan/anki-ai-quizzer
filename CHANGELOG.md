@@ -6,6 +6,7 @@ What changed in each version, newest first. How the add-on works today is in [do
 
 - **🤖 AI Window**: ⚙ Settings, ✨ Generate/Update and 📋 Today's Missed are now tabs of one separate window (open it from **🤖 AI Window** under the deck list or **Tools → AI Window**), with one AI chat docked on the right instead of a chat box on each page. The chat answers anything, can search and read the web, and can change settings, make or update cards and go through today's misses from any tab; it loads what it needs. It remembers the conversation until **Clear** or until Anki quits; closing the window keeps it.
 - The chat panels in the reviewer, Browse and Add Cards are the same chat: they can also look things up on the web, make cards (staged in AI-GEN, with a **Review in Generate/Update** button) and change settings. A settings change from the reviewer no longer interrupts the card on screen.
+- In the AI Window the chat stays open (no × or Chat link), every tab has the same width, and highlighting text in a tab shows the **AI** bubble to ask about it.
 - ⚙ Settings has a **Log out** button; the chat no longer logs you out.
 - **Clear** in a chat panel now also makes the AI forget the conversation (before, it only emptied the panel). The reviewer's conversation now lasts past the end of a review session.
 - Fixed: choosing a provider whose CLI isn't installed (e.g. Codex) made ⚙ Settings redraw non-stop, so the dropdowns closed before you could pick and you couldn't switch back. The Model row now shows `unavailable` and the page stays still.
