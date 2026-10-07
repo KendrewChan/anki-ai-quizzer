@@ -1,5 +1,5 @@
 """🤖 AI Window: ⚙ Settings, ✨ Generate/Update and 📋 Today's Missed as tabs on the left, the AI chat docked on the
-right. A window of its own, like Browse, so it can stay open while reviewing."""
+right. A window of its own, like Browse, so it can stay open while reviewing. Text highlighted in a tab can be asked about."""
 
 import html
 
@@ -10,6 +10,7 @@ from .assistant import Context, Conversation
 from .config_page import ConfigPage
 from .generate_page import GeneratePage
 from .missed_page import MissedPage
+from .side_panel import SelectionBubble
 
 WIDTH, HEIGHT = 900, 720  # the tabs' part; opening the chat widens the window by its width
 HINT = ("Ask me anything — I can search the web, change settings, make or fix cards, and go through what you missed "
@@ -18,6 +19,7 @@ SECTION = {"settings": "settings", "generate": "cards", "missed": "missed"}  # l
 
 CSS = """
 <style>
+html { overflow-y: scroll; }  /* the scrollbar always takes its room, so tabs don't shift sideways */
 body { margin: 0; padding: 0; }
 #shell { display: flex; min-height: 100vh; }
 #nav { flex: none; width: 11.5em; box-sizing: border-box; padding: 1em 0.5em; border-right: 1px solid #8884;
@@ -25,8 +27,8 @@ body { margin: 0; padding: 0; }
 #nav a { display: block; padding: 0.45em 0.7em; margin-bottom: 2px; border-radius: 6px; cursor: pointer;
          color: inherit; text-decoration: none; }
 #nav a:hover { background: #8882; } #nav a.on { background: #8883; font-weight: 600; }
-#nav a.chat { margin-top: 1em; opacity: 0.8; }
 #main { flex: 1; min-width: 0; }
+#main #cfg { max-width: none; margin: 0; padding: 0.8em 1.5em; }  /* every tab the same width */
 </style>
 """
 
@@ -52,6 +54,7 @@ class AIWindow:
         self.win = None  # built on first open, then hidden and shown again
         self.web = None
         self.chat = None
+        self.bubble = None
 
     def open(self, tab: str = None):
         if self.win is None:
@@ -94,14 +97,15 @@ class AIWindow:
         self.web = AnkiWebView(title="ai window")
         self.web.set_bridge_command(self._on_bridge, self)
         self.win.setCentralWidget(self.web)
-        self.chat = Conversation(self.addon, self, self._context, HINT, window=self.win, quick=False)
+        self.chat = Conversation(self.addon, self, self._context, HINT, window=self.win, quick=False,
+                                 closable=False)  # always open
+        self.bubble = SelectionBubble(self.web, self.chat.panel.show_selection)
 
     def _render(self):
         tab = self.tabs[self.current]
         nav = "".join(f'<a class="{"on" if name == self.current else ""}" '
                       f'onclick="pycmd(\'aiWin:tab:{name}\')">{html.escape(t.TITLE)}</a>'
                       for name, t in self.tabs.items())
-        nav += '<a class="chat" onclick="pycmd(\'aiWin:chat\')" title="Show or hide the chat">💬 Chat</a>'
         self.web.stdHtml(f'{CSS}<div id="shell"><nav id="nav">{nav}</nav><div id="main">{tab.page_html()}</div></div>',
                          context=self)
         tab.entered()
@@ -109,8 +113,6 @@ class AIWindow:
     def _on_bridge(self, message: str):
         if message.startswith("aiWin:tab:"):
             self.open(message[len("aiWin:tab:"):])
-        elif message == "aiWin:chat":
-            self.chat.panel.toggle()
         else:
             self.tabs[self.current].on_bridge(message)
 

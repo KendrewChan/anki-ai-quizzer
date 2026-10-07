@@ -18,13 +18,13 @@ MIN_WIDTH = 260  # the dock can't be dragged narrower than this
 
 
 class Chat:
-    def __init__(self, on_send, on_close, hint: str, on_command=None, quick: bool = True):
+    def __init__(self, on_send, on_close, hint: str, on_command=None, quick: bool = True, closable: bool = True):
         self.on_send = on_send  # (selection, text) -> None
         self.on_close = on_close
         self.on_command = on_command  # (command, arg) -> None: "clear", "act:<key>"
         self.web = AnkiWebView(title="ai study chat")
         self.web.set_bridge_command(self._on_bridge, self)
-        self.web.stdHtml(panel_page.panel_html(hint, quick),
+        self.web.stdHtml(panel_page.panel_html(hint, quick, closable),
                          js=["js/mathjax.js", "js/vendor/mathjax/tex-chtml-full.js"],  # as the reviewer
                          context=self)
 
@@ -81,19 +81,21 @@ class Chat:
 class ReviewPanel:
     HINT = "Highlight text on the card and click the AI bubble, then ask. Your questions stay here as you review."
 
-    def __init__(self, on_send, window=None, hint: str = HINT, on_command=None, quick: bool = True):
+    def __init__(self, on_send, window=None, hint: str = HINT, on_command=None, quick: bool = True,
+                 closable: bool = True):
         """Docked in `window` (default: the main window). The user can drag the panel wider or narrower."""
         self.win = window or mw
         self.hint = hint
         self.on_send = on_send
         self.on_command = on_command
         self.quick = quick
+        self.closable = closable
         self.dock = None
         self.chat = None
         self.grown = 0  # px the window was widened by while the panel is open
 
     def _build(self):
-        self.chat = Chat(self.on_send, self.close, self.hint, self.on_command, self.quick)
+        self.chat = Chat(self.on_send, self.close, self.hint, self.on_command, self.quick, self.closable)
         self.dock = QDockWidget("AI Study", self.win)
         self.dock.setObjectName("aiStudyAskPanel")
         self.dock.setFeatures(QDockWidget.DockWidgetFeature.NoDockWidgetFeatures)  # no float / move; × is in the page
