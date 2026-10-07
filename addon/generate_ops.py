@@ -1,11 +1,10 @@
-"""Generate page logic: reference files, AI prompt, reply parsing, validated changes. No Anki imports — unit-testable."""
+"""Card logic: reference files, the chat's CARDS section, validated changes. No Anki imports — unit-testable."""
 
 import json
 import os
 from pathlib import Path
 
 from .config_ops import resolve_deck
-from .textutil import STYLE_GUIDE, parse_json_reply
 
 TEMP_DECK = "AI-GEN"
 MAX_REF_CHARS = 150_000  # all reference text sent per message
@@ -14,18 +13,17 @@ MAX_DECK_CHARS = 120_000  # existing cards sent per message
 BATCH_SIZE = 10  # cards per request when a change applies to every existing card
 SKIP_DIRS = {".git", "node_modules", "__pycache__", ".venv", "venv"}
 
-GENERATE_SYSTEM_PROMPT = """You make Anki flashcards for the user from their reference files and requests, and improve their existing cards.
+CARDS_RULES = """CARDS: making Anki flashcards from the user's reference files, the web and their requests, and improving their existing cards.
 
-Everything you create or update is staged in a temporary top-level deck "AI-GEN" whose subdecks mirror the real deck paths. The user approves or discards staged cards, keeps generating, and finally clicks Submit: approved cards then leave AI-GEN (updates are written into the original cards, new cards move to their real deck, which is created if needed). You never change real cards directly.
+Everything you create or update is staged in a temporary top-level deck "AI-GEN" whose subdecks mirror the real deck paths. The user reviews staged cards in the Generate/Update tab of the AI Window: they approve or discard them, keep generating, and finally click Submit. Approved cards then leave AI-GEN (updates are written into the original cards, new cards move to their real deck, which is created if needed). You never change real cards directly. When you staged cards, say so in "reply" and point the user to the Generate/Update tab.
 
-Each message gives you: the deck list, the reference files (may be empty), cards of decks you asked to read, the cards currently staged, the recent conversation, then the user's request.
+The CARDS section of the message gives: the deck list, the reference files the user chose in the Generate/Update tab (may be empty), deck rules, cards of decks you asked to read, and the cards currently staged.
 
-Reply with JSON only, no code fences:
-{"reply": "<one or two short sentences: what you staged, or a question>", "read_decks": ["<full deck name>", ...], "per_card": false, "changes": [<change>, ...]}
+Keys: "read_decks": ["<full deck name>", ...], "per_card": false, "cards": [<change>, ...]
 
-read_decks: decks whose existing cards you need to see (to update them, or to avoid duplicates). When the user asks to update/improve/fix cards, or the references clearly belong to an existing deck, and that deck's cards are not shown yet, return read_decks with "changes": [] — the same request comes back with those cards. Reading a deck includes its subdecks. Otherwise return "read_decks": []. Set "per_card": true (only together with read_decks) when the request changes each existing card of those decks individually (colour-code, shorten, reformat, fix wording): the cards are then sent to you in small batches. Leave it false for anything that makes new cards or needs the whole deck at once.
+read_decks: decks whose existing cards you need to see (to update them, or to avoid duplicates). When the user asks to update/improve/fix cards, or the references clearly belong to an existing deck, and that deck's cards are not shown yet, return read_decks with "cards": [] — the same request comes back with those cards. Reading a deck includes its subdecks. Otherwise leave read_decks out. Set "per_card": true (only together with read_decks) when the request changes each existing card of those decks individually (colour-code, shorten, reformat, fix wording): the cards are then sent to you in small batches. Leave it false for anything that makes new cards or needs the whole deck at once.
 
-A change is one of:
+A change in "cards" is one of:
 {"add": {"deck": "<real deck full name>", "type": "basic", "front": "...", "back": "..."}}
 {"add": {"deck": "<real deck full name>", "type": "cloze", "text": "... {{c1::hidden part}} ...", "extra": "..."}}
 {"update": {"note_id": <id of a card under Existing cards>, "fields": {"<field name>": "<whole new field content>"}}}
@@ -39,10 +37,9 @@ Rules:
 - When references are given, base cards on them; don't invent facts they don't contain unless asked. Don't duplicate existing or staged cards.
 - update/edit: use the card's own field names, include only fields you change, give their whole new content. Keep any "Missed (date)" section in a field exactly as it is.
 - To change a staged card use edit/remove, not a new add. Staged cards marked "approved" were approved by the user: leave them alone unless asked (editing one un-approves it).
-- Deck rules (given below when the user wrote any) are the user's own instructions for a deck and its subdecks: follow them for every card you add or change there. They outrank your defaults.
+- Deck rules (given when the user wrote any) are the user's own instructions for a deck and its subdecks: follow them for every card you add or change there. They outrank your defaults.
 - When you colour-code or highlight cards, begin "reply" with "Goal: <the study goal you inferred for the deck>." so the user can correct it.
 - If the request is unclear, ask a short question in "reply" with no changes."""
-GENERATE_SYSTEM_PROMPT += "\n\n" + STYLE_GUIDE
 
 
 # --- reference files ---
@@ -155,9 +152,10 @@ def batch_line(index: int, total: int) -> str:
             "cards come in other batches, so change nothing else, add no new cards and return no read_decks.")
 
 
-def generate_prompt(message: str, decks: list, refs: dict = None, existing: dict = None, staged: list = None,
-                    history: list = None, batch: str = "", rules: list = None) -> str:
-    """existing: deck name -> [note dict]; staged: [note dict + "deck" (real) + "of"]; history: [(you, ai)].
+def cards_context(decks: list, refs: dict = None, existing: dict = None, staged: list = None,
+                  rules: list = None) -> str:
+    """The CARDS section of a chat message. existing: deck name -> [note dict]; staged: [note dict + "deck" (real)
+    + "of"].
 
     A note dict is {"id", "type", "deck", "fields": {name: html}}.
     """
@@ -191,22 +189,7 @@ def generate_prompt(message: str, decks: list, refs: dict = None, existing: dict
         parts.append("Staged cards (in AI-GEN):\n" + "\n".join(lines))
     else:
         parts.append("Staged cards: (none)")
-    if history:
-        parts.append("Recent conversation:\n" + "\n".join(f"User: {u}\nYou: {a}" for u, a in history))
-    parts.append(f"User: {message}")
-    if batch:
-        parts.append(batch)
     return "\n\n".join(parts)
-
-
-def parse_generate_reply(text: str) -> dict:
-    obj = parse_json_reply(text)
-    changes = obj.get("changes") or []
-    reads = obj.get("read_decks") or []
-    if not isinstance(changes, list) or not isinstance(reads, list):
-        raise ValueError("'changes' / 'read_decks' is not a list")
-    return {"reply": str(obj.get("reply", "")).strip(), "read_decks": [str(d) for d in reads if str(d).strip()],
-            "per_card": obj.get("per_card") is True, "changes": [c for c in changes if isinstance(c, dict)]}
 
 
 def is_temp(name: str) -> bool:

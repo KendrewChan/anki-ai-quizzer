@@ -87,19 +87,14 @@ def test_plan_changes():
     assert "nothing changed" in rejected[3] and "no field 'Extra'" in rejected[4]
 
 
-def test_prompt_and_reply():
+def test_cards_context():
     refs = {"path": "/d/notes", "files": [("a.md", "ATP")], "skipped": [], "truncated": False}
     staged = [{"id": 100, "deck": "Biology", "of": 7, "type": "Basic", "fields": {"Front": "x", "Back": "y"}}]
-    p = g.generate_prompt("make cards", DECKS, refs, {"Biology": [{"id": 7, "type": "Basic", "deck": "Biology",
-                                                                    "fields": {"Front": "Q", "Back": "A"}}]},
-                          staged, [("hi", "hello")])
+    p = g.cards_context(DECKS, refs, {"Biology": [{"id": 7, "type": "Basic", "deck": "Biology",
+                                                   "fields": {"Front": "Q", "Back": "A"}}]}, staged)
     assert "=== a.md ===\nATP" in p and '"note_id": 7' in p and '"kind": "update of note 7"' in p
     assert "AI-GEN" not in p.split("Reference")[0]  # temp deck hidden from the deck list
-    assert p.endswith("User: make cards") and "User: hi\nYou: hello" in p
-    r = g.parse_generate_reply('```json\n{"reply": "ok", "read_decks": ["Biology"], "changes": [{"remove": 1}, 3]}\n```')
-    assert r == {"reply": "ok", "read_decks": ["Biology"], "per_card": False, "changes": [{"remove": 1}]}
-    with pytest.raises(ValueError):
-        g.parse_generate_reply('{"changes": {"remove": 1}}')
+    assert "User:" not in p  # the message is the chat's (assistant_ops.message)
 
 
 def _note(i, deck="D"):
@@ -112,21 +107,12 @@ def test_chunk_notes_batches_each_card_once():
     assert g.chunk_notes({}, 2) == []
 
 
-def test_batch_line_goes_after_the_request():
-    prompt = g.generate_prompt("colour them", DECKS, existing={"A": [_note(1)]}, batch=g.batch_line(1, 3))
-    assert prompt.rstrip().endswith("return no read_decks.") and "BATCH 2 of 3" in prompt
-    assert prompt.index("User: colour them") < prompt.index("BATCH 2 of 3")
-    assert "BATCH" not in g.generate_prompt("x", DECKS)
+def test_batch_line_names_the_batch():
+    line = g.batch_line(1, 3)
+    assert line.startswith("BATCH 2 of 3") and line.endswith("return no read_decks.")
 
 
-def test_per_card_flag_needs_a_real_true():
-    assert g.parse_generate_reply('{"reply": "", "read_decks": ["A"], "per_card": true}')["per_card"] is True
-    for raw in ('{"reply": ""}', '{"reply": "", "per_card": "true"}', '{"reply": "", "per_card": 1}'):
-        assert g.parse_generate_reply(raw)["per_card"] is False
-
-
-def test_deck_rules_reach_the_prompt():
-    p = g.generate_prompt("colour them", DECKS, rules=[("Biology", "I'm studying for the MCAT")])
+def test_deck_rules_reach_the_context():
+    p = g.cards_context(DECKS, rules=[("Biology", "I'm studying for the MCAT")])
     assert "Deck rules" in p and "- Biology: I'm studying for the MCAT" in p
-    assert p.index("Deck rules") < p.index("User: colour them")
-    assert "Deck rules" not in g.generate_prompt("x", DECKS)
+    assert "Deck rules" not in g.cards_context(DECKS)

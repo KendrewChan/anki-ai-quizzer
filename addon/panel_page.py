@@ -1,4 +1,4 @@
-"""The page inside the side chat panel (review window and Add Cards window). Display only."""
+"""The page inside the side chat panel (AI Window, reviewer, Browse, Add Cards). Display only."""
 
 import html
 
@@ -28,13 +28,15 @@ body { display: flex; flex-direction: column; box-sizing: border-box; padding: 0
           white-space: pre-wrap; max-height: 5em; overflow: hidden; }
 #quick { margin-top: 0.5em; }
 #quick button { font: inherit; font-size: 12px; padding: 1px 10px; cursor: pointer; }
+#log .acts { text-indent: 0; margin-top: 0.3em; }
+#log .acts button { font: inherit; font-size: 12px; padding: 1px 10px; margin-right: 0.4em; cursor: pointer; }
 #cmd { width: 100%; box-sizing: border-box; margin-top: 0.5em; padding: 0.5em; font: inherit; border-radius: 6px; resize: none;
        border: 1px solid #8888; background: transparent; color: inherit; }
 </style>
 <div id="hd"><span>AI Study</span><span><button id="clr" title="Clear the chat">Clear</button><span id="x" title="Close">&times;</span></span></div>
 <div id="log"><div class="hint">__HINT__</div></div>
 <div id="quote"><span class="lbl">HIGHLIGHTED</span><span id="qtext"></span><span class="rm" title="Remove">&times;</span></div>
-<div id="quick"><button id="explain" title="Explain the highlighted text (or the card)">Explain</button> <button id="simpler" title="Explain in simpler, less technical terms, with an everyday example">Simpler</button> <button id="doit" title="Make the change the AI just suggested">Do it</button></div>
+<div id="quick"__NOQUICK__><button id="explain" title="Explain the highlighted text (or the card)">Explain</button> <button id="simpler" title="Explain in simpler, less technical terms, with an everyday example">Simpler</button> <button id="doit" title="Make the change the AI just suggested">Do it</button></div>
 <textarea id="cmd" rows="3" placeholder="Type your question (Enter to send, Shift+Enter for a new line)"></textarea>
 <script>
 (function () {
@@ -54,7 +56,7 @@ body { display: flex; flex-direction: column; box-sizing: border-box; padding: 0
     if (busy) stale++;
     log.innerHTML = '<div class="hint">' + hint.innerHTML + "</div>"; cmd.value = ""; setQuote(""); busy = false; wait = null;
   }
-  document.getElementById("clr").addEventListener("click", () => { clearAll(); cmd.focus(); });
+  document.getElementById("clr").addEventListener("click", () => { clearAll(); pycmd("clear"); cmd.focus(); });
   document.getElementById("x").addEventListener("click", () => pycmd("hide"));
   quoteEl.querySelector(".rm").addEventListener("click", () => { setQuote(""); cmd.focus(); });
   function send(text) {
@@ -78,20 +80,44 @@ body { display: flex; flex-direction: column; box-sizing: border-box; padding: 0
   document.getElementById("doit").addEventListener("click", () => { send("Do it: make the change you just suggested."); cmd.focus(); });
   window.aiPanel = {
     quote(s) { setQuote(s); cmd.focus(); },  // a new highlight replaces the previous one
-    reply(html, err) {
+    reply(html, err, actions) {  // actions: [[label, key]] -> buttons sending "act:<key>"
       if (stale) { stale--; return; }
       if (wait) { wait.remove(); wait = null; }
       busy = false;
-      typeset(add("ai" + (err ? " err" : ""), html));
+      const d = add("ai" + (err ? " err" : ""), html);
+      if (actions && actions.length) {
+        const row = document.createElement("div"); row.className = "acts";
+        actions.forEach(([label, key]) => {
+          const b = document.createElement("button"); b.textContent = label;
+          b.addEventListener("click", () => pycmd("act:" + key)); row.appendChild(b);
+        });
+        d.appendChild(row);
+      }
+      typeset(d);
       cmd.focus();
     },
+    status(text) { if (wait && !stale) wait.textContent = text; },  // progress of a message still being answered
     clear() { clearAll(); stale = 0; },
+    prefill(prefix) {  // the Settings tab's deck click starts a message about it, unless the user typed their own
+      const v = cmd.value;
+      if (!v.trim()) cmd.value = prefix;
+      else if (this.prefix && v.startsWith(this.prefix)) cmd.value = prefix + v.slice(this.prefix.length);
+      else return;
+      this.prefix = prefix;
+      cmd.focus();
+      cmd.setSelectionRange(cmd.value.length, cmd.value.length);
+    },
+    unprefill() {
+      if (this.prefix && cmd.value.startsWith(this.prefix)) cmd.value = cmd.value.slice(this.prefix.length);
+      this.prefix = null;
+    },
   };
 })();
 </script>
 """
 
 
-def panel_html(hint: str) -> str:
-    """The side panel's page; `hint` is the grey line shown while the conversation is empty."""
-    return _PANEL_HTML.replace("__HINT__", html.escape(hint))
+def panel_html(hint: str, quick: bool = True) -> str:
+    """The side panel's page; `hint` is the grey line shown while the conversation is empty; quick: the Explain /
+    Simpler / Do it buttons (about a card)."""
+    return _PANEL_HTML.replace("__HINT__", html.escape(hint)).replace("__NOQUICK__", "" if quick else ' style="display:none"')

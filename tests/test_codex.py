@@ -88,6 +88,19 @@ def test_codex_command_is_isolated_and_reads_stdin():
     assert session.build_codex_command("/x/codex", "gpt-x", "/tmp/w")[-5:-3] == ["-m", "gpt-x"]
 
 
+def test_web_commands_add_only_web_search():
+    """The chat may search and fetch the web; nothing else opens up, and grading's commands stay closed."""
+    codex = session.build_codex_command("/x/codex", "", "/tmp/w", web=True)
+    assert 'web_search="live"' in codex and 'web_search="disabled"' not in codex
+    assert codex[codex.index("-s") + 1] == "read-only" and "shell_tool" in codex
+    claude = session.build_command("/x/claude", "", "S", web=True)
+    assert claude[claude.index("--tools") + 1] == "WebSearch,WebFetch"
+    assert claude[claude.index("--allowedTools") + 1] == "WebSearch,WebFetch"  # nobody can answer a prompt
+    assert claude[claude.index("--setting-sources") + 1] == "" and "--safe-mode" in claude
+    plain = session.build_command("/x/claude", "", "S")
+    assert plain[plain.index("--tools") + 1] == "" and "--allowedTools" not in plain
+
+
 def test_claude_command_omits_model_when_default():
     assert "--model" not in session.build_command("/x/claude", "", "S")
     assert session.build_command("/x/claude", "opus", "S")[-4:-2] == ["--model", "opus"]
@@ -212,6 +225,12 @@ def test_probe_model_reads_claude_init(tmp_path):
     assert name == "fake-claude-model" and session.resolved_model("claude", "sonnet") == "fake-claude-model"
 
 
+def test_startup_check_also_starts_the_chat_command(tmp_path):
+    """The self-check runs the web-enabled chat command too, so a CLI that rejects its flags is caught on open."""
+    for name, fake, model in (("claude", FAKE_CLAUDE, "fake-claude-model"), ("codex", FAKE_CODEX, "fake-codex-model")):
+        assert session.startup_check(name, _exe(tmp_path, name, fake), str(tmp_path)) == model
+
+
 def test_probe_model_fails_cleanly(tmp_path):
     with pytest.raises(SessionError):
         session.probe_model("codex", make_exe(tmp_path, "x", body="sys.stdin.read()"), "", str(tmp_path), timeout=5)
@@ -238,7 +257,6 @@ def test_list_models_claude_resolves_each_alias(tmp_path):
 
 
 def test_settings_prompt_carries_model_in_use_and_no_guessing_rule():
-    p = config_ops.config_prompt({"provider": "codex", "models": {"codex": ""}}, "ok", "what models?",
-                                 model_in_use="gpt-5.6-sol")
+    p = config_ops.settings_context({"provider": "codex", "models": {"codex": ""}}, "ok", model_in_use="gpt-5.6-sol")
     assert '"model": "(provider default)"' in p and '"model in use": "gpt-5.6-sol"' in p
-    assert "Never list, guess or recommend model names" in config_ops.CONFIG_SYSTEM_PROMPT
+    assert "Never list, guess or recommend model names" in config_ops.SETTINGS_RULES

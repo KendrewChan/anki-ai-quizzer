@@ -43,7 +43,7 @@ def test_invalid_changes_rejected_without_touching_config(change, msg):
 def test_old_global_sharp_questions_dropped_on_next_change():
     new, _, _, _ = apply([{"set": {"grade_timeout_s": 90}}], cfg=dict(BASE, sharp_questions=False))
     assert "sharp_questions" not in new and "sharp_questions" not in config_ops.TOGGLES
-    assert "set_deck_sharp" in config_ops.CONFIG_SYSTEM_PROMPT
+    assert "set_deck_sharp" in config_ops.SETTINGS_RULES
 
 
 def test_claude_path_must_be_executable():
@@ -75,14 +75,14 @@ def test_auth_actions_returned_not_applied():
     assert auth == ["login"] and new == BASE and log == [] and hist == []
 
 
-def test_parse_config_reply():
-    r = config_ops.parse_config_reply('```json\n{"reply":" ok ","changes":[{"set":{"model":"opus"}},"junk"]}\n```')
-    assert r == {"reply": "ok", "changes": [{"set": {"model": "opus"}}]}
+def test_settings_context_lists_settings_rules_and_login():
+    p = config_ops.settings_context(dict(BASE, custom=["be strict"]), "logged in (claude.ai)")
+    assert '"model": "sonnet"' in p and '"codex": ""' in p and "1. be strict" in p
+    assert p.endswith("Login: logged in (claude.ai)") and "User:" not in p
 
 
-def test_config_prompt_lists_settings_rules_and_login():
-    p = config_ops.config_prompt(dict(BASE, custom=["be strict"]), "logged in (claude.ai)", "use opus")
-    assert '"model": "sonnet"' in p and '"codex": ""' in p and "1. be strict" in p and "logged in" in p and p.endswith("User: use opus")
+def test_logout_is_a_button_not_a_chat_change():
+    assert '{"logout": true}' not in config_ops.SETTINGS_RULES and "Log out" in config_ops.SETTINGS_RULES
 
 
 def test_tutor_system_prompt_appends_custom_rules():
@@ -153,7 +153,7 @@ def test_deck_ai_toggle_independent_and_cascades():
     assert config_ops.deck_toggle_on(new, "ai", "Coding::Languages::Golang", DECKS) is False
     assert config_ops.deck_toggle_on(new, "ai", "HSK", DECKS) is True
     assert config_ops.deck_toggle_change(new, "ai", "HSK", DECKS) == {"set_deck_ai": {"deck": "HSK", "on": False}}
-    assert "set_deck_ai" in config_ops.CONFIG_SYSTEM_PROMPT
+    assert "set_deck_ai" in config_ops.SETTINGS_RULES
 
 
 def test_prune_drops_missing_decks_from_prompts_and_sharp():
@@ -164,7 +164,7 @@ def test_prune_drops_missing_decks_from_prompts_and_sharp():
 
 def test_config_prompt_shows_deck_sharp():
     cfg = dict(BASE, deck_sharp={"1": False})
-    p = config_ops.config_prompt(cfg, "ok", "hi", decks=DECKS, selected="Coding::Languages")
+    p = config_ops.settings_context(cfg, "ok", decks=DECKS, selected="Coding::Languages")
     assert "- Coding: Rewrite question off" in p and "Rewrite question off" in p
 
 
@@ -193,7 +193,7 @@ def test_prune_drops_deleted_decks():
 
 def test_config_prompt_shows_selected_deck_chain():
     cfg = dict(BASE, deck_prompts={"1": "scenarios", "3": "code"})
-    p = config_ops.config_prompt(cfg, "ok", "hi", DECKS, "Coding::Languages::Golang")
+    p = config_ops.settings_context(cfg, "ok", DECKS, "Coding::Languages::Golang")
     assert "Selected deck: Coding::Languages::Golang" in p
     assert "  Coding: scenarios\n  Coding::Languages::Golang: code" in p
     assert "- HSK" not in p and "HSK" in p  # listed as a deck, no prompt
@@ -229,7 +229,7 @@ def test_toggle_flips_and_defaults_on():
 def test_deck_rules_outrank_general_rules():
     sp = grading.system_prompt(["grade strictly"])
     assert "Priority: deck rules, then the user's general rules, then everything above" in sp
-    assert "a card's deck rules win over them" in sp and "Deck rules, when given, take priority" in note_chat.EDIT_SYSTEM_PROMPT
+    assert "a card's deck rules win over them" in sp and "Deck rules, when given, take priority" in note_chat.NOTE_RULES
 
 
 def test_ask_mode_deck_prompt_applies_with_sharp_off():

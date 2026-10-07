@@ -13,7 +13,7 @@ INCOMPATIBLE = re.compile(
 )
 AUTH = re.compile(r"not logged in|log ?in|unauthori[sz]ed|\b401\b|invalid api key|authenticat", re.I)
 
-# Shared between the reviewer (main.py) and the Settings page: the most recent AI failure.
+# Shared between the reviewer (main.py) and the Settings tab: the most recent AI failure.
 LAST_ERROR = {}
 
 
@@ -70,10 +70,11 @@ def study_failure(kind: str, message: str, failures: int, disabled) -> tuple:
         if failures >= 2:
             disabled = disabled or f"AI unavailable: {message}"
     if disabled:
-        return failures, disabled, disabled + " — AI off until you reopen the reviewer. Open ⚙ Settings to fix it."
+        return failures, disabled, (disabled + " — AI off until you reopen the reviewer. "
+                                    "Open 🤖 AI Window → ⚙ Settings to fix it.")
     if kind == "timeout":
         return failures, None, "AI timed out."
-    return failures, None, f"AI error: {message} — open ⚙ Settings to fix it."
+    return failures, None, f"AI error: {message} — open 🤖 AI Window → ⚙ Settings to fix it."
 
 def update(provider: str, path: str, timeout: float = 600) -> tuple:
     """(ok, output) from `claude update` / `codex update`."""

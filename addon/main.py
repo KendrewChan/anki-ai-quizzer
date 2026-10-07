@@ -1,4 +1,4 @@
-"""Anki wiring: reviewer hooks, pycmd bridge, side-panel chats, Missed append, main-page toggle + settings link."""
+"""Anki wiring: reviewer hooks, pycmd bridge, side-panel chats, Missed append, main-page toggle + AI Window link."""
 
 import datetime
 import json
@@ -14,10 +14,9 @@ from aqt.qt import QAction, QDialogButtonBox
 from aqt.reviewer import Reviewer
 
 from . import config_ops, errorlog, grading, health, missed, note_chat, state, ui
-from .chat_page import deck_ids, load_config, migrate_once
-from .config_page import ConfigPage
-from .generate_page import GeneratePage
-from .missed_page import MissedPage
+from .ai_window import AIWindow
+from .assistant import Context, Conversation
+from .tab_page import deck_ids, load_config, migrate_once
 from .session import make_backend, provider_of
 from .side_panel import ADD_HINT, BROWSE_HINT, ReviewPanel, SelectionBubble
 from .textutil import strip_html
@@ -29,14 +28,13 @@ class State:
     def __init__(self):
         self.enabled = bool(state.get("ui", "ai_study"))  # AI Study mode; as the user last left it
         self.session = None
-        self.edit_session = None  # separate CLI for highlight questions / note changes
         self.cwd = None
-        self.page = None
-        self.gen_page = None
-        self.missed_page = None
+        self.window = None  # ai_window.AIWindow
         self.bypass = False  # reveal() is showing the answer: don't intercept it
-        self.panel = None  # side_panel.ReviewPanel: the highlight-to-ask chat
+        self.chat = None  # assistant.Conversation: the reviewer's highlight-to-ask chat
+        self.panel = None  # its side_panel.ReviewPanel
         self.action = None
+        self.window_action = None
         self.reset()
 
     def reset(self):
@@ -63,13 +61,6 @@ def session():
         S.cwd = S.cwd or tempfile.mkdtemp(prefix="anki_ai_")
         S.session = make_backend(c, grading.system_prompt(c.get("custom")), S.cwd, mw.taskman.run_on_main)
     return S.session
-
-
-def edit_session():
-    if S.edit_session is None:
-        S.cwd = S.cwd or tempfile.mkdtemp(prefix="anki_ai_")
-        S.edit_session = make_backend(cfg(), note_chat.EDIT_SYSTEM_PROMPT, S.cwd, mw.taskman.run_on_main)
-    return S.edit_session
 
 
 def active(card=None) -> bool:
@@ -190,12 +181,8 @@ def on_js_message(handled, message: str, context):
     if isinstance(context, (DeckBrowser, Overview)):
         if message == "aiStudy:toggle":
             set_enabled(not S.enabled)
-        elif message == "aiStudy:settings":
-            S.page.open()
-        elif message == "aiStudy:generate":
-            S.gen_page.open()
-        elif message == "aiStudy:missed":
-            S.missed_page.open()
+        elif message == "aiStudy:window":
+            S.window.open()
         return (True, None)
     if not isinstance(context, Reviewer):
         return handled
@@ -234,45 +221,35 @@ def submit(payload: str):
     session().request(card_id, prompt, grading.parse_grade, cfg().get("grade_timeout_s", 60), on_graded)
 
 
-def reply_only(panel):
-    """Callback for chats that only answer: any "fields" in the reply are ignored."""
-    def on_reply(_cid, result, err):
-        panel.reply(f"Failed: {err.message}" if err else result["reply"] or "…", bool(err))
-    return on_reply
+def guarded(done, build):
+    """Call build() -> Context and hand it to done; errors go to the panel (they'd vanish in a Qt callback)."""
+    try:
+        done(build())
+    except Exception as e:
+        done(f"Failed: {type(e).__name__}: {e}")
 
 
-def ask(sel: str, request: str):
-    """Highlight-to-ask from the side panel, about the card on screen. Question side: help without the answer, never
-    edits. Answer side: answer questions and change the note when asked (one undo step). Replies go to the panel."""
+def reviewer_context(_sel: str, done):
+    """Highlight-to-ask, about the card on screen. Question side: help without the answer, never edits. Answer side:
+    the note can be changed (one undo step)."""
     card = mw.reviewer.card if mw.state == "review" and mw.reviewer else None
-    if card is None or not request or not active(card):
-        S.panel.reply("Open a card with AI Study on to ask about it.", True)
+    if card is None or not active(card):
+        done("Open a card with AI Study on to ask about it.")
         return
+    rules, deck = deck_rules(card, cfg()), home_deck(card)
     if mw.reviewer.state == "question":
-        ask_question_side(card, sel, request)
-    else:
-        ask_answer_side(card, sel, request)
-
-
-def ask_question_side(card, sel: str, request: str):
-    ctx = S.ctx.get(card.id) or {}
-    prompt = note_chat.question_side_prompt(ctx.get("q") or strip_html(card.question()),
-                                            ctx.get("questions", []), request, sel, deck_rules(card, cfg()))
-    edit_session().request(card.id, prompt, note_chat.parse_edit_reply, cfg().get("grade_timeout_s", 60),
-                           reply_only(S.panel))
-
-
-def ask_answer_side(card, sel: str, request: str):
-    cid, c = card.id, cfg()
-    verdict, questions, answers = S.verdicts.get(cid, (None, [], []))
-    note = card.note()
-    nid = note.id
-    prompt = note_chat.edit_prompt(dict(note.items()), request, questions, answers, verdict, deck_rules(card, c), sel)
-
-    def on_edited(_cid, result, err):
-        apply_note_edit(nid, result, err, S.panel, mw.reviewer, lambda: redraw_edited(nid))
-
-    edit_session().request(cid, prompt, note_chat.parse_edit_reply, c.get("grade_timeout_s", 60), on_edited)
+        ctx = S.ctx.get(card.id) or {}
+        note = note_chat.question_side_context(ctx.get("q") or strip_html(card.question()), ctx.get("questions", []),
+                                               rules)
+        done(Context(f"the reviewer, question side of a card in {deck}", ["note"], note, deck=deck))
+        return
+    verdict, questions, answers = S.verdicts.get(card.id, (None, [], []))
+    n = card.note()
+    nid = n.id
+    note = note_chat.answer_side_context(dict(n.items()), questions, answers, verdict, rules)
+    done(Context(f"the reviewer, answer side of a card in {deck}", ["note"], note,
+                 lambda fields, reply, say: apply_note_edit(nid, fields, reply, say, mw.reviewer,
+                                                            lambda: redraw_edited(nid)), deck=deck))
 
 
 def redraw_edited(nid: int):
@@ -288,33 +265,30 @@ def redraw_edited(nid: int):
         S.panel.chat.focus()
 
 
-def apply_note_edit(nid: int, result, err, panel, initiator=None, on_saved=None):
-    """Show the AI's reply in `panel` and write the field changes it asked for, as one undo step. With no initiator
-    every screen redraws itself; the reviewer passes itself and redraws in `on_saved`."""
-    if err:
-        panel.reply(f"Failed: {err.message}", True)  # not counted toward disabling AI Study
-        return
+def apply_note_edit(nid: int, fields: dict, reply: str, say, initiator=None, on_saved=None):
+    """Write the field changes the AI asked for, as one undo step, and report through say(text, err). With no
+    initiator every screen redraws itself; the reviewer passes itself and redraws in `on_saved`."""
     note = mw.col.get_note(nid)  # fresh: the Missed append or the editor may have saved in the meantime
-    changes, unknown = note_chat.plan_field_edit(dict(note.items()), result["fields"])
-    reply = result["reply"] or ("Done." if changes else "No change.")
+    changes, unknown = note_chat.plan_field_edit(dict(note.items()), fields)
+    reply = reply or ("Done." if changes else "No change.")
     if unknown:
         reply += f" (ignored unknown fields: {', '.join(unknown)})"
     if not changes:
-        panel.reply(reply, bool(unknown))
+        say(reply, bool(unknown))
         return
     for name, value in changes.items():
         note[name] = value
     done = f"{reply} Changed: {', '.join(changes)} — Edit → Undo reverts it."
 
     def saved(_):
-        panel.reply(done)
+        say(done, False)
         if on_saved:
             on_saved()
 
     (
         update_note(parent=mw, note=note)
         .success(saved)
-        .failure(lambda e: panel.reply(f"Not saved: {e}", True))
+        .failure(lambda e: say(f"Not saved: {e}", True))
         .run_in_background(initiator=initiator)
     )
 
@@ -324,124 +298,76 @@ def on_browser_will_show(browser):
     about the selected note, which the AI may edit (only while AI Study is on)."""
     if not S.enabled:
         return
-    panel = ReviewPanel(lambda sel, text: ask_browse(browser, panel, sel, text), browser, BROWSE_HINT)
-    bubble = SelectionBubble(browser.editor.web, panel.show_selection)
+    chat = Conversation(ADDON, S.window, lambda sel, done: browse_context(browser, done), BROWSE_HINT, browser)
+    bubble = SelectionBubble(browser.editor.web, chat.panel.show_selection)
     menu = browser.form.menubar.addMenu("AI Study")
     action = menu.addAction("Chat about this note")
-    action.triggered.connect(lambda: panel.toggle() if S.enabled else None)
-    browser._ai_panel = panel  # keep them alive with the window
+    action.triggered.connect(lambda: chat.panel.toggle() if S.enabled else None)
+    browser._ai_chat = chat  # keep them alive with the window
     browser._ai_bubble = bubble
 
 
-def ask_browse(browser, panel, sel: str, request: str):
-    """A question or change request about the note open in the Browse editor; answers and edits like the reviewer's
-    answer side."""
-    if not request or not S.enabled or S.disabled:
-        panel.reply("AI Study is off.", True)
+def browse_context(browser, done):
+    """The note open in the Browse editor; answered and edited like the reviewer's answer side."""
+    if not S.enabled or S.disabled:
+        done("AI Study is off.")
         return
 
-    def go(*_):
-        try:
-            send()
-        except Exception as e:  # runs in a Qt callback, where errors would vanish and leave the panel on "Thinking…"
-            panel.reply(f"Failed: {type(e).__name__}: {e}", True)
-
-    def send():
+    def build():
         note = browser.editor.note
         if note is None:
-            panel.reply("Select a single note first.", True)
-            return
+            return "Select a single note first."
         note = mw.col.get_note(note.id)  # as just saved
         card = browser.card
         if card is not None and not active(card):
-            panel.reply("AI Study is off for this deck.", True)
-            return
-        c = cfg()
-        rules = deck_rules(card, c) if card is not None else []
-        prompt = note_chat.edit_prompt(dict(note.items()), request, [], [], None, rules, sel)
+            return "AI Study is off for this deck."
+        rules = deck_rules(card, cfg()) if card is not None else []
+        deck = home_deck(card) if card is not None else None
         nid = note.id
-        edit_session().request(nid, prompt, note_chat.parse_edit_reply, c.get("grade_timeout_s", 60),
-                               lambda _cid, result, err: apply_note_edit(nid, result, err, panel))
+        return Context(f"the Browse window, editing a note{f' in {deck}' if deck else ''}", ["note"],
+                       note_chat.answer_side_context(dict(note.items()), [], [], None, rules),
+                       lambda fields, reply, say: apply_note_edit(nid, fields, reply, say), deck=deck)
 
-    browser.editor.call_after_note_saved(go)
+    browser.editor.call_after_note_saved(lambda *_: guarded(done, build))
 
 
 def on_add_cards_init(addcards):
     """An "AI Study" button in the Add Cards window opens/closes a chat panel at its side (only while AI Study is on)."""
     if not S.enabled:
         return
-    panel = ReviewPanel(lambda sel, text: ask_new(addcards, panel, sel, text), addcards, ADD_HINT)
+    chat = Conversation(ADDON, S.window, lambda sel, done: add_cards_context(addcards, done), ADD_HINT, addcards)
     button = addcards.form.buttonBox.addButton("AI Study", QDialogButtonBox.ButtonRole.ActionRole)
     button.setAutoDefault(False)  # Enter in the editor must not press it
-    button.clicked.connect(lambda: panel.toggle() if S.enabled else None)
-    addcards._ai_panel = panel  # keep it alive with the window
+    button.clicked.connect(lambda: chat.panel.toggle() if S.enabled else None)
+    addcards._ai_chat = chat  # keep it alive with the window
 
 
-def ask_new(addcards, panel, sel: str, request: str):
-    """A question or change request about the note being written in the Add Cards window. The AI may fill in or change
-    its fields (in the editor only: the note isn't saved until the user adds it)."""
-    if not request or not S.enabled or S.disabled:
-        panel.reply("AI Study is off.", True)
+def add_cards_context(addcards, done):
+    """The note being written in the Add Cards window. The AI may fill in or change its fields (in the editor only:
+    the note isn't saved until the user adds it)."""
+    if not S.enabled or S.disabled:
+        done("AI Study is off.")
         return
 
-    def go(*_):
-        try:
-            send()
-        except Exception as e:  # runs in a Qt callback, where errors would vanish and leave the panel on "Thinking…"
-            panel.reply(f"Failed: {type(e).__name__}: {e}", True)
-
-    def send():
+    def build():
         note = addcards.editor.note
-        c = cfg()
-        did = addcards.deck_chooser.selected_deck_id
-        rules = config_ops.deck_chain(mw.col.decks.name(did), deck_ids(), c.get("deck_prompts") or {})
-        prompt = note_chat.new_note_prompt(dict(note.items()) if note else {}, request, sel, rules)
-        new_note_request(addcards, panel, prompt, c.get("grade_timeout_s", 60))
+        deck = mw.col.decks.name(addcards.deck_chooser.selected_deck_id)
+        rules = config_ops.deck_chain(deck, deck_ids(), cfg().get("deck_prompts") or {})
+        return Context(f"the Add Cards window, writing a new note for {deck}", ["note"],
+                       note_chat.new_note_context(dict(note.items()) if note else {}, rules),
+                       lambda fields, reply, say: apply_new_note_edit(addcards, fields, reply, say), deck=deck)
 
-    addcards.editor.call_after_note_saved(go)  # the field being typed in counts too
-
-
-def new_note_request(addcards, panel, prompt: str, timeout: float, found: str = "", searched: tuple = ()):
-    """Send the Add Cards prompt; while the AI asks to search the collection, run the search (read-only, the AI has no
-    other access to it) and ask again with the results appended. Every request carries the full prompt, so it works
-    for the stateless Codex backend too."""
-    def on_result(_cid, result, err):
-        query = result["search"] if result else ""
-        if err or not query or len(searched) >= note_chat.MAX_SEARCHES:
-            apply_new_note_edit(addcards, panel, result, err, searched)
-            return
-        block = search_notes(query, last=len(searched) + 1 >= note_chat.MAX_SEARCHES)
-        new_note_request(addcards, panel, prompt, timeout, found + block, searched + (query,))
-
-    edit_session().request(0, prompt + found, note_chat.parse_edit_reply, timeout, on_result)
+    addcards.editor.call_after_note_saved(lambda *_: guarded(done, build))  # the field being typed in counts too
 
 
-def search_notes(query: str, last: bool) -> str:
-    """The AI's Anki search query run on the collection -> the text block for its next prompt."""
-    try:
-        ids = mw.col.find_notes(query)
-        notes = []
-        for nid in ids[:note_chat.MAX_RESULTS]:
-            n = mw.col.get_note(nid)
-            cards = n.cards()
-            deck = mw.col.decks.name(cards[0].odid or cards[0].did) if cards else "?"
-            notes.append({"deck": deck, "type": n.note_type()["name"], "fields": dict(n.items())})
-        return note_chat.search_block(query, notes, len(ids), last)
-    except Exception as e:  # a bad search syntax is the AI's to fix, not a failure of the chat
-        return note_chat.search_block(query, [], 0, last, error=str(e))
-
-
-def apply_new_note_edit(addcards, panel, result, err, searched: tuple = ()):
-    """Show the AI's reply in `panel` and put the field changes it asked for into the Add Cards editor."""
-    if err:
-        panel.reply(f"Failed: {err.message}", True)
-        return
+def apply_new_note_edit(addcards, fields: dict, reply: str, say):
+    """Put the field changes the AI asked for into the Add Cards editor; report through say(text, err)."""
     note = addcards.editor.note  # the live editor note: the user may have typed since the request
     if note is None:
-        panel.reply("The note is gone.", True)
+        say("The note is gone.", True)
         return
-    changes, unknown = note_chat.plan_field_edit(dict(note.items()), result["fields"])
-    reply = result["reply"] or ("Done." if changes else "No change.")
+    changes, unknown = note_chat.plan_field_edit(dict(note.items()), fields)
+    reply = reply or ("Done." if changes else "No change.")
     if unknown:
         reply += f" (ignored unknown fields: {', '.join(unknown)})"
     if changes:
@@ -449,9 +375,7 @@ def apply_new_note_edit(addcards, panel, result, err, searched: tuple = ()):
             note[name] = value
         addcards.editor.loadNote()
         reply += f" Changed: {', '.join(changes)}."
-    if searched:
-        reply += f" (Searched: {'; '.join(searched)})"
-    panel.reply(reply, bool(unknown) and not changes)
+    say(reply, bool(unknown) and not changes)
 
 
 def append_missed(bullets: list):
@@ -478,16 +402,29 @@ def on_show_answer(card):
 
 def end_session(*_args):
     """Leaving the reviewer or closing the profile: kill the process; the next session rebuilds it from config."""
-    for name in ("session", "edit_session"):
-        if getattr(S, name) is not None:
-            getattr(S, name).close()
-            setattr(S, name, None)
-    if S.panel is not None:
-        S.panel.reset()
+    if S.session is not None:
+        S.session.close()
+        S.session = None
+    if S.chat is not None:
+        S.chat.reset()
     S.reset()
 
 
-# --- toggle + settings link ---
+def on_config_changed():
+    """Settings changed (maybe from a chat in the middle of a review): the next AI call starts a CLI with them, and AI
+    turned off by failures gets another try. The card on screen keeps its questions and grade."""
+    if S.session is not None:
+        S.session.close()
+        S.session = None
+    S.failures, S.disabled = 0, None
+
+
+def on_profile_close():
+    end_session()
+    S.window.close()
+
+
+# --- toggle + AI Window link ---
 
 def set_enabled(on: bool):
     S.enabled = on
@@ -510,11 +447,7 @@ def controls_html() -> str:
         f'<a href=# onclick="pycmd(\'aiStudy:toggle\');return false;" style="text-decoration:none">'
         f'AI Study: <b style="color:{color}">{on}</b></a>'
         ' &nbsp;·&nbsp; '
-        '<a href=# onclick="pycmd(\'aiStudy:settings\');return false;">⚙ Settings</a>'
-        ' &nbsp;·&nbsp; '
-        '<a href=# onclick="pycmd(\'aiStudy:generate\');return false;">✨ Generate/Update Cards</a>'
-        ' &nbsp;·&nbsp; '
-        '<a href=# onclick="pycmd(\'aiStudy:missed\');return false;">📋 Today\'s Missed</a></div>'
+        '<a href=# onclick="pycmd(\'aiStudy:window\');return false;">🤖 AI Window</a></div>'
     )
 
 
@@ -532,21 +465,22 @@ def setup_menu():
     S.action.setChecked(S.enabled)
     S.action.toggled.connect(lambda on: on != S.enabled and set_enabled(on))
     mw.form.menuTools.addAction(S.action)
+    S.window_action = QAction("AI Window", mw)
+    S.window_action.triggered.connect(lambda: S.window.open())
+    mw.form.menuTools.addAction(S.window_action)
 
 
 def on_sync_finished():
-    """Synced settings are read from the collection on use; only an open Settings page needs redrawing."""
+    """Synced settings are read from the collection on use; only an open Settings tab needs redrawing."""
     migrate_once(ADDON, after_sync=True)
-    if S.page and mw.state == S.page.STATE:
-        S.page.refresh()
+    S.window.settings.refresh()
 
 
 def setup():
     errorlog.install()  # tracebacks from this add-on also go to user_files/error.log
-    S.page = ConfigPage(ADDON, end_session)
-    S.panel = ReviewPanel(ask)
-    S.gen_page = GeneratePage(ADDON)
-    S.missed_page = MissedPage(ADDON)
+    S.window = AIWindow(ADDON, on_config_changed)
+    S.chat = Conversation(ADDON, S.window, reviewer_context, ReviewPanel.HINT)
+    S.panel = S.chat.panel
     setup_menu()
     gui_hooks.deck_browser_will_render_content.append(on_deck_browser)
     gui_hooks.overview_will_render_content.append(on_overview)
@@ -559,5 +493,5 @@ def setup():
     gui_hooks.reviewer_did_show_answer.append(on_show_answer)
     gui_hooks.webview_did_receive_js_message.append(on_js_message)
     gui_hooks.reviewer_will_end.append(end_session)
-    gui_hooks.profile_will_close.append(end_session)
+    gui_hooks.profile_will_close.append(on_profile_close)
     gui_hooks.sync_did_finish.append(on_sync_finished)

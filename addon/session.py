@@ -35,6 +35,12 @@ ISOLATION_FLAGS = [
     "--no-session-persistence",
 ]
 
+# The chat (assistant.py) may also search and read the web: only those two tools, pre-approved, as nobody can answer a
+# permission prompt. Grading and question rewrites never get them.
+WEB_TOOLS = "WebSearch,WebFetch"
+_TOOLS = ISOLATION_FLAGS.index("--tools")
+WEB_FLAGS = ISOLATION_FLAGS[:_TOOLS] + ["--tools", WEB_TOOLS, "--allowedTools", WEB_TOOLS] + ISOLATION_FLAGS[_TOOLS + 2:]
+
 
 # Codex: no shell, apps, browser, computer use, plugins or web search; read-only sandbox; no user config,
 # rules or session files. Verified on codex-cli 0.152.0.
@@ -51,6 +57,7 @@ CODEX_ISOLATION_FLAGS = [
     "--disable", "plugins",
     "-c", 'web_search="disabled"',
 ]
+CODEX_WEB_FLAGS = [a if a != 'web_search="disabled"' else 'web_search="live"' for a in CODEX_ISOLATION_FLAGS]
 
 PROVIDERS = ("claude", "codex")  # the first one is the default
 CLAUDE_ALIASES = ("haiku", "sonnet", "opus", "fable")  # Claude Code's own model names
@@ -118,21 +125,21 @@ def system_prompt_file(cwd: str, text: str) -> str:
     return path
 
 
-def build_command(claude_path: str, model: str, prompt_file: str) -> list:
+def build_command(claude_path: str, model: str, prompt_file: str, web: bool = False) -> list:
     return [
         claude_path, "-p",
         "--input-format", "stream-json",
         "--output-format", "stream-json",
         "--verbose",
-        *ISOLATION_FLAGS,
+        *(WEB_FLAGS if web else ISOLATION_FLAGS),
         *(["--model", model] if model else []),
         "--system-prompt-file", prompt_file,
     ]
 
 
-def build_codex_command(codex_path: str, model: str, cwd: str) -> list:
+def build_codex_command(codex_path: str, model: str, cwd: str, web: bool = False) -> list:
     """The prompt goes on stdin ("-")."""
-    return [codex_path, "exec", "--json", *CODEX_ISOLATION_FLAGS,
+    return [codex_path, "exec", "--json", *(CODEX_WEB_FLAGS if web else CODEX_ISOLATION_FLAGS),
             *(["-m", model] if model else []), "-C", cwd, "-"]
 
 
@@ -141,14 +148,15 @@ def model_for(cfg: dict, provider: str = None) -> str:
     return (cfg.get("models") or {}).get(provider or provider_of(cfg)) or ""
 
 
-def make_backend(cfg: dict, system_prompt: str, cwd: str, dispatch):
-    """The configured provider's backend. `cfg` is the add-on config."""
+def make_backend(cfg: dict, system_prompt: str, cwd: str, dispatch, web: bool = False):
+    """The configured provider's backend. `cfg` is the add-on config; web: may search and fetch the web."""
     provider = provider_of(cfg)
     model = model_for(cfg)
     if provider == "codex":
-        cmd = build_codex_command(find_cli("codex", cfg.get("codex_path", "")), model, cwd)
+        cmd = build_codex_command(find_cli("codex", cfg.get("codex_path", "")), model, cwd, web)
         return CodexBackend(cmd, cwd, dispatch, system_prompt)
-    cmd = build_command(find_cli("claude", cfg.get("claude_path", "")), model, system_prompt_file(cwd, system_prompt))
+    cmd = build_command(find_cli("claude", cfg.get("claude_path", "")), model, system_prompt_file(cwd, system_prompt),
+                        web)
     return ClaudeSession(cmd, cwd, dispatch, model)
 
 
@@ -465,14 +473,19 @@ def startup_check(provider: str, path: str, cwd: str) -> str:
     Proves the CLI still accepts every flag the add-on uses. Raises SessionError (or OSError if missing).
     """
     name = probe_model(provider, path, "", cwd)
-    if provider == "codex":  # the model probe runs without --json, so also start the exact --json command
+    if provider == "codex":  # the model probe runs without --json, so also start the exact --json commands
         _check_codex_json(path, cwd)
+        _check_codex_json(path, cwd, web=True)
+    else:  # the chat's command, with the web tools
+        prompt = json.dumps({"type": "user", "message": {"role": "user", "content": "ok"}}) + "\n"
+        _watch("claude", build_command(path, "", system_prompt_file(cwd, "Reply with: ok"), web=True), cwd, prompt,
+               "stdout", 30, _claude_model, close_stdin=False)
     return name
 
 
-def _check_codex_json(path: str, cwd: str, timeout: float = 30):
-    """Start `codex exec --json` exactly as studying does and stop at its first event."""
-    _watch("codex", build_codex_command(path, "", cwd), cwd, "Reply with: ok", "stdout", timeout,
+def _check_codex_json(path: str, cwd: str, timeout: float = 30, web: bool = False):
+    """Start `codex exec --json` exactly as studying (or the chat) does and stop at its first event."""
+    _watch("codex", build_codex_command(path, "", cwd, web), cwd, "Reply with: ok", "stdout", timeout,
            lambda line: "thread.started" if '"thread.started"' in line else None)
 
 

@@ -2,7 +2,7 @@
 
 Fixes: update, roll back to the last working version, switch provider, log in, allow more time, copy a report.
 
-The Settings page it reports to provides: cfg(), provider(cfg=None) -> (provider, cli path), apply(changes),
+The Settings tab it reports to provides: cfg(), provider(cfg=None) -> (provider, cli path), apply(changes),
 login(), say(text, err, actions) and refresh().
 """
 
