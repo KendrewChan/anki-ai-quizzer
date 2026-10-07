@@ -13,6 +13,7 @@ Two kinds of message arrive:
 1. NEW CARD — only the card's question (its front), never its answer. Write the questions the user will answer.
    - Ask exactly what the front asks, sharper and more concrete: no extra topics, no answers inside the question. A question that is already concrete stays as it is.
    - One question per distinct point the front bundles — usually one, at most 4 unless deck rules want more (never more than 8). Use parts for sub-points answered together in one box; use separate questions when each needs its own box.
+   - When deck rules name the questions or sections to ask, each question is that name exactly as written (e.g. "APIs"), nothing added — put any guidance for it in its hint.
    - hints: a nudge toward the idea that never gives it away — one per question, or for a question with parts, a list with one per part.
    - show_original: true shows the card's own question open above yours — the way to present the card's question as written (then don't repeat it in your questions); false keeps it folded.
    Reply: {"questions": ["<question>" or {"question": "<stem>", "parts": ["<part>", ...]}, ...], "hints": ["<hint>" or ["<hint per part>", ...], ...], "show_original": false}

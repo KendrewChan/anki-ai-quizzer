@@ -270,6 +270,9 @@ class Conversation:
             self._ask(t)
             return
         rejected = []
+        if result["read_decks"] and "cards" not in t.ctx.sections and more:  # reading a deck needs no "need"
+            t.ctx.sections.add("cards")
+            self.loaded.add("cards")
         if "cards" in t.ctx.sections and not t.batch and self._read_decks(t, result, rejected):
             return
         ops = []

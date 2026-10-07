@@ -7,6 +7,7 @@ from aqt.qt import QMainWindow
 from aqt.webview import AnkiWebView
 
 from .assistant import Context, Conversation
+from .assistant_ops import NEEDABLE
 from .config_page import ConfigPage
 from .generate_page import GeneratePage
 from .missed_page import MissedPage
@@ -15,7 +16,6 @@ from .side_panel import SelectionBubble
 WIDTH, HEIGHT = 900, 720  # the tabs' part; opening the chat widens the window by its width
 HINT = ("Ask me anything — I can search the web, change settings, make or fix cards, and go through what you missed "
         "today.")
-SECTION = {"settings": "settings", "generate": "cards", "missed": "missed"}  # loaded for each tab's messages
 
 CSS = """
 <style>
@@ -122,5 +122,5 @@ class AIWindow:
 
     def _context(self, _selection: str, done):
         name = self.current
-        done(Context(f"the AI Window, {self.tabs[name].TITLE} tab", [SECTION[name]],
-                     deck=self.settings.selected if name == "settings" else None))
+        done(Context(f"the AI Window, {self.tabs[name].TITLE} tab", NEEDABLE,  # full access from every tab
+                     deck=self.settings.selected))

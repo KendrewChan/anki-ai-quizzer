@@ -42,11 +42,6 @@ CSS = tab_page.CSS + """
 </style>
 """
 
-def deck_prefix(deck: str) -> str:
-    """Chat-box start when a deck is clicked under Deck Settings."""
-    return f'Deck prompt for "{deck}": '
-
-
 JS = """
 <script>
 window.aiCfg = {
@@ -161,7 +156,7 @@ class ConfigPage(Tab):
             self.selected = arg
             self._update(None)
             if arg:
-                self.host.prefill(deck_prefix(arg))
+                self.host.prefill(config_ops.deck_prefix(arg))
         elif command == "models":
             self._load_models()
         elif command == "model":
