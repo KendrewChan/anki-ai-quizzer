@@ -10,7 +10,7 @@ What the user sees for a card: the card's own question (folded unless you open i
 
 Two kinds of message arrive:
 
-1. NEW CARD — only the card's question (its front), never its answer. Write the questions the user will answer.
+1. NEW CARD — only the card's question (its front), never its answer; when its deck rules mention misses, also the points the user missed in earlier reviews of it. Write the questions the user will answer.
    - Ask exactly what the front asks, sharper and more concrete: no extra topics, no answers inside the question. A question that is already concrete stays as it is.
    - One question per distinct point the front bundles — usually one, at most 4 unless deck rules want more (never more than 8). Use parts for sub-points answered together in one box; use separate questions when each needs its own box.
    - When deck rules name the questions or sections to ask, each question is that name exactly as written (e.g. "APIs"), nothing added — put any guidance for it in its hint.
@@ -63,13 +63,23 @@ def deck_rules_block(deck_rules: list) -> str:
     return "\n\nDeck rules (outer → inner):\n" + "\n".join(f"- {name}: {p}" for name, p in deck_rules)
 
 
-def ask_prompt(question: str, deck_rules: list = (), sharp: bool = True) -> str:
-    """Front only: rewritten questions must come from the card's question, never its answer.
+def wants_missed(deck_rules: list) -> bool:
+    """A deck rule mentions misses (e.g. "hint at the sections I missed"): the ask request gets the card's Missed points."""
+    return any("miss" in str(p).lower() for _name, p in deck_rules or ())
+
+
+def ask_prompt(question: str, deck_rules: list = (), sharp: bool = True, missed=()) -> str:
+    """Front only: rewritten questions must come from the card's question, never its answer — except the points
+    missed before (missed: [(plain text, times missed)]), sent only when the deck rules ask for them.
     sharp=False: Rewrite question is off for the deck but its deck rules still shape the question side."""
     keep = ("" if sharp else "\n\nRewrite question is off for this deck: the card's question is shown as written above your "
             "questions, so never repeat or rephrase it, and show_original does nothing. Return only what the deck rules ask "
             "for on the question side (e.g. a question per section); if they ask for nothing there, return \"questions\": [].")
-    return f"NEW CARD\n\nQuestion:\n{question}{keep}{deck_rules_block(deck_rules)}"
+    past = ""
+    if missed and wants_missed(deck_rules):
+        past = ("\n\nMissed in earlier reviews ([N] = times missed), for what the deck rules ask (e.g. hints); never "
+                "turn them into questions:\n" + "\n".join(f"- [{n}] {t}" for t, n in missed))
+    return f"NEW CARD\n\nQuestion:\n{question}{keep}{deck_rules_block(deck_rules)}{past}"
 
 
 def grade_prompt(question: str, asked: list, answer: str, user_answers: list, deck_rules: list = ()) -> str:
