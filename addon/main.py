@@ -160,7 +160,12 @@ def on_show_question(card):
     if not mode:
         return
     parse = grading.parse_questions if mode == "sharp" else grading.parse_added_questions
-    session().request(card.id, grading.ask_prompt(q, rules, sharp=mode == "sharp"), parse,
+    past = []
+    if grading.wants_missed(rules):
+        note = card.note()
+        field = missed.pick_missed_field(list(note.keys()))
+        past = [(strip_html(h), n) for h, n in missed.parse_missed(note[field] if field else "")[1]]
+    session().request(card.id, grading.ask_prompt(q, rules, sharp=mode == "sharp", missed=past), parse,
                       c.get("ask_timeout_s", 30), on_asked)
 
 

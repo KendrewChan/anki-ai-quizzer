@@ -360,3 +360,12 @@ def test_search_protocol():
 def test_named_sections_stay_titles_with_guidance_in_hints():
     assert "each question is that name exactly as written" in grading.SYSTEM_PROMPT
     assert "put any guidance for it in its hint" in grading.SYSTEM_PROMPT
+
+
+def test_ask_prompt_sends_past_misses_only_when_deck_rules_ask():
+    past = [("consistent hashing", 2)]
+    asked = grading.ask_prompt("Design X", [("D", "hint at the sections I missed before")], missed=past)
+    assert "Missed in earlier reviews" in asked and "- [2] consistent hashing" in asked
+    assert "consistent hashing" not in grading.ask_prompt("Design X", [("D", "seven sections")], missed=past)
+    assert "consistent hashing" not in grading.ask_prompt("Design X", missed=past)
+    assert "Missed in earlier" not in grading.ask_prompt("Design X", [("D", "hint at what I missed")])
