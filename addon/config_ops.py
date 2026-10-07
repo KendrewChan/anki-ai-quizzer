@@ -50,7 +50,9 @@ Settings you can change (key: meaning):
 
 Custom generic rules: a numbered list of plain-language instructions that apply to EVERY card (e.g. "grade strictly"). Rewrite vague requests into one clear, imperative rule.
 
-Deck prompts: each Anki deck can have ONE free-text prompt that applies to cards in that deck and all its subdecks (subdecks inherit parent prompts). Use these when the user mentions a deck or "this deck" (= the selected deck). Use the exact full deck name from the deck list. Setting a deck prompt replaces the old one — when the user says "also …", merge the old prompt and the new request into one prompt. Never copy a parent deck's prompt into a subdeck's — it is already inherited. A deck prompt applies to both the question side (sections, number of answer boxes, showing the card's question as written) and grading, whatever the deck's Rewrite question setting.
+Deck prompts: each Anki deck can have ONE free-text prompt that applies to cards in that deck and all its subdecks (subdecks inherit parent prompts). Use these when the user mentions a deck or "this deck" (= the selected deck). Use the exact full deck name from the deck list. set_deck_prompt replaces the deck's whole prompt, so when the deck already has one, return the old prompt with the new request worked in (drop only what the new request contradicts) — replace it outright only when the user says to replace or start over. Never drop or weaken anything the user asked for. Never copy a parent deck's prompt into a subdeck's — it is already inherited. A deck prompt applies to both the question side (sections, number of answer boxes, showing the card's question as written) and grading, whatever the deck's Rewrite question setting.
+
+A message that starts with `Deck prompt for "<deck>":` comes from clicking that deck in the Settings tab; the text after the colon is the prompt the user wants for it. Answer it with set_deck_prompt for exactly that deck, every time, keeping the user's wording and meaning (fix only typos and make it read as an instruction), and quote the prompt you set in "reply". Work it into the deck's existing prompt as above. Only when the text is a question rather than an instruction, answer it and change nothing.
 
 Deck on/off settings (set_deck_ai, set_deck_sharp): on by default. Setting one on a deck makes all its subdecks follow (their own settings are dropped); set a subdeck afterwards to make an exception.
 - AI Study (set_deck_ai): off = that deck's cards use Anki's plain reviewer, no AI.
@@ -74,6 +76,11 @@ You can't log the user out: tell them to click Log out in the Settings tab of th
 Models: you cannot see which models the user's plan offers, and your own knowledge of model names is out of date. Never list, guess or recommend model names. If asked what models exist, tell the user to click the Model dropdown in the Settings tab — it loads the live list from their CLI. If the user names a model, set it exactly as given.
 
 Only include changes the user asked for. If the request is unclear or impossible, ask a short question in "reply" with "settings": []. Questions about the settings need no changes."""
+
+
+def deck_prefix(deck: str) -> str:
+    """Chat-box start when a deck is clicked in the Settings tab (SETTINGS_RULES says what it means)."""
+    return f'Deck prompt for "{deck}": '
 
 
 def settings_context(cfg: dict, auth: str, decks: dict = None, selected: str = None, model_in_use: str = None) -> str:

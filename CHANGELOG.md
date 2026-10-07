@@ -4,6 +4,9 @@ What changed in each version, newest first. How the add-on works today is in [do
 
 ## Unreleased
 
+- The AI Window's chat now sees everything from every tab (settings, the cards of any deck, staged cards, today's misses) and can read any deck from any chat.
+- Deck prompts set from a deck click are handled the same way every time: your wording is kept, worked into the deck's existing prompt (replaced only when you say so) and quoted in the reply.
+- A deck prompt that names sections (e.g. "one box each for APIs, Data Store") now gets exactly those names as the questions, with any guidance in the **?** hints.
 - **🤖 AI Window**: ⚙ Settings, ✨ Generate/Update and 📋 Today's Missed are now tabs of one separate window (open it from **🤖 AI Window** under the deck list or **Tools → AI Window**), with one AI chat docked on the right instead of a chat box on each page. The chat answers anything, can search and read the web, and can change settings, make or update cards and go through today's misses from any tab; it loads what it needs. It remembers the conversation until **Clear** or until Anki quits; closing the window keeps it.
 - The chat panels in the reviewer, Browse and Add Cards are the same chat: they can also look things up on the web, make cards (staged in AI-GEN, with a **Review in Generate/Update** button) and change settings. A settings change from the reviewer no longer interrupts the card on screen.
 - In the AI Window the chat stays open (no × or Chat link), every tab has the same width, and highlighting text in a tab shows the **AI** bubble to ask about it.

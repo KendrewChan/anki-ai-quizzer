@@ -355,3 +355,8 @@ def test_search_protocol():
     assert "No more searches: answer now." in note_chat.search_block("atp", notes, 1, last=True)
     assert "No notes match." in note_chat.search_block("zzz", [], 0)
     assert "The search failed: bad" in note_chat.search_block("(", [], 0, error="bad")
+
+
+def test_named_sections_stay_titles_with_guidance_in_hints():
+    assert "each question is that name exactly as written" in grading.SYSTEM_PROMPT
+    assert "put any guidance for it in its hint" in grading.SYSTEM_PROMPT

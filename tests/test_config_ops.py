@@ -241,3 +241,10 @@ def test_ask_mode_deck_prompt_applies_with_sharp_off():
     keep = grading.ask_prompt("Q", [("SD", "seven sections")], sharp=False)
     assert "Rewrite question is off for this deck" in keep and keep.index("off for this deck") < keep.index("Deck rules")
     assert "off for this deck" not in grading.ask_prompt("Q")
+
+
+def test_deck_prefix_is_explained_to_the_ai():
+    prefix = config_ops.deck_prefix("Biology::Ch3")
+    assert prefix == 'Deck prompt for "Biology::Ch3": '
+    assert 'Deck prompt for "<deck>":' in config_ops.SETTINGS_RULES
+    assert "Never drop or weaken anything the user asked for" in config_ops.SETTINGS_RULES
