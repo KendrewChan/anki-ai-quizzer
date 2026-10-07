@@ -1,6 +1,7 @@
-"""The AI chat in a side panel, one per window: the AI Window, the reviewer, Browse, Add Cards. Each message is a fresh
-CLI call that may search and fetch the web; nothing is remembered but the last few exchanges, resent as text. The
-window says what the user has open (`context`); the AI loads other sections with "need". Prompts: assistant_ops."""
+"""The AI chat in a side panel, one per window: the AI Window, the reviewer, Browse, Add Cards. Its CLI may search and
+fetch the web. Claude runs one process per chat, which remembers the conversation until Clear or the profile closes;
+Codex starts one per message and gets the recent exchanges resent. The window says what the user has open
+(`context`); the AI loads other sections with "need". Prompts: assistant_ops."""
 
 import datetime
 import tempfile
@@ -16,6 +17,13 @@ from .side_panel import ReviewPanel
 from .tab_page import deck_ids, load_config
 
 TIMEOUT_S = 300  # web searches and big card requests take a while
+_ALL = set()  # open conversations, closed with the profile
+
+
+def close_all():
+    """The profile is closing: stop every chat's CLI and forget its conversation."""
+    for chat in list(_ALL):
+        chat.reset()
 
 
 class Context:
@@ -40,6 +48,7 @@ class _Turn:
         self.ctx, self.text, self.sel = ctx, text, sel
         self.rounds = 0
         self.found = ""  # search results appended to the message
+        self.new = ""  # the latest search results, not yet sent to a CLI that remembers
         self.searched = ()
         self.staged = []  # AI-GEN as listed in the last prompt (staged card numbers refer to it)
         self.batch = None  # (index, chunks) while a per-card request goes through the cards a few at a time
@@ -56,12 +65,19 @@ class Conversation:
         self.host = host
         self.context = context
         self.panel = ReviewPanel(self.send, window, hint, self._on_command, quick)
-        self.history = deque(maxlen=assistant_ops.HISTORY)  # (user message, reply)
+        self.history = deque(maxlen=assistant_ops.HISTORY)  # (user message, reply), for CLIs that don't remember
         self.turn = None  # the message being answered
-        self.backend = None
+        self.backend = None  # the chat's CLI; Claude's process keeps the conversation
+        self.backend_key = None  # (provider, model, path) it was started with: a change starts a new one
+        self.remembers = False  # the backend keeps the conversation (Claude)
+        self.sent = {}  # section -> hash of the copy the remembering CLI has
+        self.loaded = set()  # sections loaded in this conversation: they stay loaded, resent when they change
+        self.since = ""  # what happened since the AI's last reply (a batch run), told with the next message
+        self.batch_backend = None  # a throwaway CLI per batch, so batches don't fill the conversation
         self.cwd = None
         self._actions = {}  # button key -> callable, for buttons under replies
         self._next_key = 0
+        _ALL.add(self)
 
     # --- panel ---
 
@@ -72,6 +88,8 @@ class Conversation:
                     self.panel.reply(ctx, True)
                     return
                 self.cancel()  # after Clear the panel takes a new message while the last one may still run
+                ctx.sections |= self.loaded
+                self.loaded |= ctx.sections - {"note"}
                 self.turn = _Turn(ctx, text, sel)
                 self._ask(self.turn)
             except Exception as e:  # runs in Qt callbacks, where errors would vanish and leave the panel on "Thinking…"
@@ -85,36 +103,60 @@ class Conversation:
 
     def _on_command(self, command: str, arg: str):
         if command == "clear":  # the page already emptied itself; a reply still coming is dropped there
-            self.history.clear()
-            if self.turn is not None:
-                self.turn.forget = True
+            self.clear()
         elif command == "act":
             fn = self._actions.pop(arg, None)
             if fn:
                 fn()
 
-    def forget(self):
-        """Empty the conversation and hide the panel (nothing is kept). A message still being answered finishes."""
+    def clear(self):
+        """Forget the conversation: stop the CLI (its memory goes with it) and anything being answered."""
+        self.cancel()
+        self._stop()
         self.history.clear()
-        if self.turn is not None:
-            self.turn.forget = True
-        self.panel.reset()
+        self.loaded.clear()
+        self.since = ""
 
     def reset(self):
-        """forget(), and stop a message being answered."""
-        self.cancel()
-        self.forget()
+        """clear(), and empty and hide the panel."""
+        self.clear()
+        self.panel.reset()
+
+    def close(self):
+        """The chat's window is gone."""
+        self.clear()
+        _ALL.discard(self)
 
     def cancel(self):
+        """Drop the message being answered (its reply is ignored) and any batch run."""
         t, self.turn = self.turn, None
-        if t is not None and t.owns_cards:
-            self.host.generate.set_status(False)
-        self._stop()
+        if t is not None:
+            t.forget = True
+            if t.owns_cards:
+                self.host.generate.set_status(False)
+        self._stop_batch()
 
     def _stop(self):
         if self.backend is not None:
             self.backend.close()
             self.backend = None
+        self.sent = {}
+
+    def _stop_batch(self):
+        if self.batch_backend is not None:
+            self.batch_backend.close()
+            self.batch_backend = None
+
+    def _backend(self, cfg: dict):
+        """The chat's CLI; started on first use and again when the provider, model or path changed."""
+        provider = provider_of(cfg)
+        key = (provider, model_for(cfg), cfg.get(f"{provider}_path") or "")
+        if self.backend is None or key != self.backend_key:
+            self._stop()
+            self.backend = make_backend(cfg, assistant_ops.system_prompt(), self._tmpdir(), mw.taskman.run_on_main,
+                                        web=True)
+            self.backend_key, self.remembers = key, provider == "claude"
+        return self.backend
 
     def _tmpdir(self) -> str:
         self.cwd = self.cwd or tempfile.mkdtemp(prefix="anki_ai_chat_")
@@ -135,13 +177,29 @@ class Conversation:
         except ValueError as e:  # the chosen reference files can't be read
             self._finish(t, f"Reference: {e}", err=True)
             return
-        extra = t.found + (f"\n\n{generate_ops.batch_line(t.batch[0], len(t.batch[1]))}" if t.batch else "")
-        prompt = assistant_ops.message(t.ctx.where, blocks, t.text, t.sel, list(self.history), extra)
-        self._stop()  # fresh process per call: the sections differ, and nothing is to be remembered
-        self.backend = make_backend(load_config(self.addon), assistant_ops.system_prompt(t.ctx.sections),
-                                    self._tmpdir(), mw.taskman.run_on_main, web=True)
-        self.backend.request(0, prompt, assistant_ops.parse_reply, TIMEOUT_S,
-                             lambda _id, result, err: self._on_reply(t, result, err))
+        cfg = load_config(self.addon)
+        if t.batch:  # everything again, to a throwaway CLI
+            prompt = assistant_ops.message(t.ctx.where, blocks, t.text, t.sel, list(self.history),
+                                           f"\n\n{generate_ops.batch_line(t.batch[0], len(t.batch[1]))}")
+            self._stop_batch()
+            backend = self.batch_backend = make_backend(cfg, assistant_ops.system_prompt(), self._tmpdir(),
+                                                        mw.taskman.run_on_main, web=True)
+        else:
+            backend = self._backend(cfg)
+            if self.remembers:  # only what it hasn't seen
+                changed = {k: v for k, v in blocks.items() if self.sent.get(k) != hash(v)}
+                if t.rounds:
+                    prompt = assistant_ops.follow_up(changed, t.new)
+                else:
+                    prompt = assistant_ops.message(t.ctx.where, changed, t.text, t.sel, (), t.new,
+                                                   [k for k in blocks if k not in changed], self.since)
+                self.sent.update({k: hash(v) for k, v in changed.items()})
+            else:
+                prompt = assistant_ops.message(t.ctx.where, blocks, t.text, t.sel, list(self.history), t.found,
+                                               since=self.since)
+            t.new = self.since = ""
+        backend.request(0, prompt, assistant_ops.parse_reply, TIMEOUT_S,
+                        lambda _id, result, err: self._on_reply(t, result, err))
 
     def _blocks(self, t: _Turn) -> dict:
         cfg, decks, s = load_config(self.addon), deck_ids(), t.ctx.sections
@@ -178,8 +236,11 @@ class Conversation:
     def _on_reply(self, t: _Turn, result, err):
         if t is not self.turn:
             return  # cancelled meanwhile
-        self._stop()
+        if t.batch:
+            self._stop_batch()
         if err:
+            if not t.batch:
+                self.sent = {}  # a crashed CLI restarts without them
             health.LAST_ERROR[provider_of(load_config(self.addon))] = err.message
             lost = ""
             if t.batch:
@@ -191,16 +252,20 @@ class Conversation:
         t.rounds += 1
         more = t.rounds < assistant_ops.MAX_ROUNDS and not t.batch  # a batch only applies its changes
         acts = result["settings"] or result["cards"] or result["fields"]
-        need = [n for n in result["need"] if n in assistant_ops.NEEDABLE and n not in t.ctx.sections]
+        need = [n for n in result["need"] if n in assistant_ops.NEEDABLE]
         if need and more:
+            for n in need:
+                self.sent.pop(n, None)  # asked again for a loaded one: it lost track, send it again
             t.ctx.sections |= set(need)
+            self.loaded |= set(need)
             self._progress(t, f"Loading {', '.join(need)}…")
             self._ask(t)
             return
         query = result["search"]
         if query and not acts and more and len(t.searched) < note_chat.MAX_SEARCHES:
             t.searched += (query,)
-            t.found += search_notes(query, last=len(t.searched) >= note_chat.MAX_SEARCHES)
+            t.new = search_notes(query, last=len(t.searched) >= note_chat.MAX_SEARCHES)
+            t.found += t.new
             self._progress(t, f"Searching your notes: {query}")
             self._ask(t)
             return
@@ -294,6 +359,7 @@ class Conversation:
                 f"Stopped after batch {index + 1} of {len(chunks)}: {done} of {total} cards processed, "
                 f"{total - done} not.")
         staged = self._staged_note(tally["counts"])
+        self.since = f"the user's request was worked through in batches, by separate calls: {head}{staged}"
         self._finish(t, " ".join([head + staged, *tally["rejected"]]), err=bool(tally["rejected"]),
                      actions=self._review_action(tally["counts"]), remember=f"{head} {tally['reply']}".strip())
 

@@ -115,9 +115,8 @@ class AIWindow:
             self.tabs[self.current].on_bridge(message)
 
     def _closed(self):
-        """Closing forgets the conversation; staged cards, the reference and settings stay."""
+        """The conversation stays for the next open (until Clear or the profile closes)."""
         self.tabs[self.current].left()
-        self.chat.forget()
 
     def _context(self, _selection: str, done):
         name = self.current
