@@ -5,7 +5,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from addon import grading, missed, note_chat, textutil  # noqa: E402
+from addon import assistant_ops, grading, missed, note_chat, textutil  # noqa: E402
 from addon import panel_page, ui  # noqa: E402
 
 
@@ -236,22 +236,20 @@ def test_missed_keeps_only_the_most_missed_points():
     assert ("unrelated brand new gap", 1) not in out  # newest, but ties keep the older points
 
 
-def test_edit_prompt_has_fields_review_and_request():
+def test_answer_side_context_has_fields_and_review():
     v = {"verdict": "wrong", "feedback": "Missed the key part."}
-    p = note_chat.edit_prompt({"Front": "Q?", "Back": "<b>A</b>"}, "fix the typo", ["Q1"], ["my ans"], v,
-                            [("Deck", "be terse")])
+    p = note_chat.answer_side_context({"Front": "Q?", "Back": "<b>A</b>"}, ["Q1"], ["my ans"], v, [("Deck", "be terse")])
     assert "[Front]\nQ?" in p and "[Back]\n<b>A</b>" in p and "Q: Q1\nUser: my ans" in p
-    assert "Grade: wrong — Missed the key part." in p and p.endswith("fix the typo") and "be terse" in p
+    assert "Grade: wrong — Missed the key part." in p and "be terse" in p
 
 
-def test_parse_edit_reply_and_plan():
-    r = note_chat.parse_edit_reply('```json\n{"reply": "Fixed.", "fields": {"Back": "B2", "Nope": "x", "Front": "Q"}}\n```')
+def test_field_reply_and_plan():
+    r = assistant_ops.parse_reply('```json\n{"reply": "Fixed.", "fields": {"Back": "B2", "Nope": "x", "Front": "Q"}}\n```')
     assert r["reply"] == "Fixed."
     changes, unknown = note_chat.plan_field_edit({"Front": "Q", "Back": "B"}, r["fields"])
     assert changes == {"Back": "B2"} and unknown == ["Nope"]
-    assert note_chat.parse_edit_reply('{"reply": "Unclear."}') == {"reply": "Unclear.", "fields": {}, "search": ""}
     with pytest.raises(ValueError):
-        note_chat.parse_edit_reply('{"fields": ["x"]}')
+        assistant_ops.parse_reply('{"fields": ["x"]}')
 
 
 def test_verdict_html_has_no_ask_box():
@@ -263,9 +261,10 @@ def test_verdict_html_has_no_ask_box():
 def test_style_guide_in_every_system_prompt():
     from addon import generate_ops
     assert "\\( ... \\)" in textutil.STYLE_GUIDE
-    for prompt in (grading.system_prompt([]), grading.system_prompt(["be terse"]), note_chat.EDIT_SYSTEM_PROMPT,
-                   generate_ops.GENERATE_SYSTEM_PROMPT):
+    for prompt in (grading.system_prompt([]), grading.system_prompt(["be terse"]), assistant_ops.system_prompt([]),
+                   assistant_ops.system_prompt(assistant_ops.SECTIONS)):
         assert textutil.STYLE_GUIDE in prompt
+    assert textutil.STYLE_GUIDE not in note_chat.NOTE_RULES + generate_ops.CARDS_RULES  # once, from the chat
 
 
 def test_rich_escapes_and_bolds_keeps_latex():
@@ -301,27 +300,26 @@ def test_ask_prompt_sends_front_only():
 
 
 def test_highlight_ask_answers_questions_and_edits():
-    assert "change nothing" in note_chat.EDIT_SYSTEM_PROMPT and "without giving away the answer" in note_chat.EDIT_SYSTEM_PROMPT
+    assert "change nothing" in note_chat.NOTE_RULES and "without giving away the answer" in note_chat.NOTE_RULES
     html = ui.ask_html()
     assert 'id="ai-ask-bubble"' in html and "aiStudy:open:" in html and "ai-ask-pop" not in html
     panel = panel_page.panel_html("Ask <me>")
     assert "pycmd(\"hide\")" in panel and "Ask &lt;me&gt;" in panel and "HIGHLIGHTED" in panel and 'content: "> "' in panel and 'content: "● "' in panel and "id=\"clr\"" in panel and "id=\"explain\"" in panel
-    p = note_chat.new_note_prompt({"Front": "Q?", "Back": ""}, "better wording?", "Q", [("D", "terse")])
-    assert p.startswith("NEW NOTE") and "[Front]\nQ?" in p and "Highlighted:\nQ" in p
-    assert "User's request:\nbetter wording?" in p and '"search": "<Anki search query>"' in p and "read the user's other notes" in p
-    assert "NEW NOTE" in note_chat.EDIT_SYSTEM_PROMPT and "fill in or change a field" in note_chat.EDIT_SYSTEM_PROMPT
-    assert "\"fields\" is always {}" not in note_chat.EDIT_SYSTEM_PROMPT.split("NEW NOTE")[1]
+    p = note_chat.new_note_context({"Front": "Q?", "Back": ""}, [("D", "terse")])
+    assert p.startswith("NEW NOTE") and "[Front]\nQ?" in p and "terse" in p
+    assert "NEW NOTE" in note_chat.NOTE_RULES and "fill in or change a field" in note_chat.NOTE_RULES
+    assert "\"fields\" is always {}" not in note_chat.NOTE_RULES.split("NEW NOTE")[1]
 
 
-def test_question_side_prompt_never_has_the_answer():
-    p = note_chat.question_side_prompt("What is CAP?", ["Name the three"], "what's partition", "partition", [("D", "terse")])
-    assert p.startswith("QUESTION SIDE") and "Highlighted:\npartition" in p and "- Name the three" in p
-    assert p.endswith("what's partition") and "terse" in p and "NOTE FIELDS" not in p
+def test_question_side_context_never_has_the_answer():
+    p = note_chat.question_side_context("What is CAP?", ["Name the three"], [("D", "terse")])
+    assert p.startswith("QUESTION SIDE") and "- Name the three" in p and "terse" in p and "NOTE FIELDS" not in p
+    assert "even when other context" in note_chat.NOTE_RULES  # a deck it read or the web mustn't leak it
 
 
-def test_edit_prompt_without_grade_and_with_selection():
-    p = note_chat.edit_prompt({"Back": "B"}, "why?", [], [], None, (), "some text")
-    assert p.startswith("ANSWER SIDE") and "Review:" not in p and "Highlighted:\nsome text" in p
+def test_answer_side_context_without_grade():
+    p = note_chat.answer_side_context({"Back": "B"}, [], [], None, ())
+    assert p.startswith("ANSWER SIDE") and "Review:" not in p
 
 
 def test_prompt_explains_boxes_per_question():
@@ -346,9 +344,9 @@ def test_keep_mode_shows_original_plainly_and_allows_no_questions():
     assert "never repeat or rephrase it" in keep and '"questions": []' in keep
 
 
-def test_new_note_search_protocol():
-    assert note_chat.parse_edit_reply('{"reply": "", "fields": {}, "search": " deck:Bio "}')["search"] == "deck:Bio"
-    assert '"search"' in note_chat.EDIT_SYSTEM_PROMPT and "never tell the user you can't see" in note_chat.EDIT_SYSTEM_PROMPT
+def test_search_protocol():
+    assert assistant_ops.parse_reply('{"reply": "", "fields": {}, "search": " deck:Bio "}')["search"] == "deck:Bio"
+    assert '"search"' in assistant_ops.BASE and "never say you can't access them" in assistant_ops.BASE
     notes = [{"deck": "Bio::Ch3", "type": "Basic", "fields": {"Front": "<b>ATP</b> is?", "Back": "x" * 500}}]
     b = note_chat.search_block("atp", notes, 25)
     assert 'SEARCH RESULTS for "atp"' in b and "25 matching note(s) (first 1 of 25)" in b and "Front: ATP is?" in b

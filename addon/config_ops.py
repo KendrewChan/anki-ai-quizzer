@@ -1,9 +1,8 @@
-"""Config page logic: AI prompt, reply parsing, validated changes. No Anki imports — unit-testable."""
+"""Settings logic: the chat's SETTINGS section, validated changes. No Anki imports — unit-testable."""
 
 import json
 import os
 
-from .textutil import parse_json_reply
 from .session import CLAUDE_ALIASES, PROVIDERS, model_for, provider_of
 
 TIMEOUT_RANGE = (5, 600)
@@ -44,7 +43,7 @@ def toggle_change(cfg: dict, key: str) -> dict:
     return {"set": {key: not toggle_on(cfg, key)}}
 
 
-CONFIG_SYSTEM_PROMPT = """You manage the settings of an Anki add-on that uses an AI CLI (Claude Code or Codex) as a flashcard tutor. The user talks to you in plain language; you turn requests into changes.
+SETTINGS_RULES = """SETTINGS: the add-on's own settings. The add-on uses an AI CLI (Claude Code or Codex) as a flashcard tutor; you turn the user's plain-language requests into changes.
 
 Settings you can change (key: meaning):
 """ + "\n".join(f"- {k}: {v}" for k, v in SETTINGS.items()) + """
@@ -58,12 +57,9 @@ Deck on/off settings (set_deck_ai, set_deck_sharp): on by default. Setting one o
 - Rewrite question (set_deck_sharp): the AI first rewrites each card's question into sharper, concrete questions. Off = the user answers the card's own question as written (one AI call per card, faster) — except on decks where a deck prompt applies: there the AI still reads the card first, keeps its question unless the deck prompt asks for something else (sections, more boxes, showing the question), and the prompt applies on both sides.
 A deck prompt CANNOT switch these — whenever the user wants AI Study or Rewrite question on/off for a deck ("sharp questions" means the same), use these changes, never a deck prompt. If a deck prompt only says to skip rewriting questions, clear it in the same reply.
 
-Each message gives you the current settings, custom rules, deck list, deck prompts, the selected deck and login state, then the user's request.
+The SETTINGS section of the message gives the current settings, custom rules, deck list, deck prompts, the deck selected in the Settings tab ("this deck") and login state.
 
-Reply with JSON only, no code fences:
-{"reply": "<one or two short sentences to the user>", "changes": [<change>, ...]}
-
-A change is one of:
+Put setting changes in "settings": [<change>, ...]. A change is one of:
 {"set": {"<key>": <value>}}
 {"add_custom": "<rule>"}
 {"remove_custom": <rule number, 1-based>}
@@ -73,16 +69,16 @@ A change is one of:
 {"set_deck_sharp": {"deck": "<full deck name>", "on": true | false | null}}   — same, for Rewrite question
 {"undo": true}        — revert the user's previous change
 {"login": true}       — sign in to the current provider's CLI (opens the browser)
-{"logout": true}      — also signs the user out of that CLI on this computer; only when they explicitly ask to log out
+You can't log the user out: tell them to click Log out in the Settings tab of the AI Window.
 
-Models: you cannot see which models the user's plan offers, and your own knowledge of model names is out of date. Never list, guess or recommend model names. If asked what models exist, tell the user to click the Model dropdown in Configurations — it loads the live list from their CLI. If the user names a model, set it exactly as given.
+Models: you cannot see which models the user's plan offers, and your own knowledge of model names is out of date. Never list, guess or recommend model names. If asked what models exist, tell the user to click the Model dropdown in the Settings tab — it loads the live list from their CLI. If the user names a model, set it exactly as given.
 
-Only include changes the user asked for. If the request is unclear or impossible, ask a short question in "reply" with "changes": []. Questions about the settings need no changes."""
+Only include changes the user asked for. If the request is unclear or impossible, ask a short question in "reply" with "settings": []. Questions about the settings need no changes."""
 
 
-def config_prompt(cfg: dict, auth: str, message: str, decks: dict = None, selected: str = None,
-                  model_in_use: str = None) -> str:
-    """decks: full deck name -> id (as str). model_in_use: the real model id the CLI reports."""
+def settings_context(cfg: dict, auth: str, decks: dict = None, selected: str = None, model_in_use: str = None) -> str:
+    """The SETTINGS section of a chat message. decks: full deck name -> id (as str). model_in_use: the real model id
+    the CLI reports."""
     decks = decks or {}
     settings = {k: cfg.get(k) for k in SETTINGS}
     settings["model"] = model_for(cfg) or "(provider default)"
@@ -111,7 +107,7 @@ def config_prompt(cfg: dict, auth: str, message: str, decks: dict = None, select
         f"Custom generic rules:\n{rules}\n\n"
         f"Decks:\n" + ("\n".join(sorted(decks)) or "(none)") + "\n\n"
         f"Deck prompts:\n{prompts}\n\nDeck on/off settings (default on):\n{toggles}\n\nSelected deck: {sel}\n\n"
-        f"Login: {auth}\n\nUser: {message}"
+        f"Login: {auth}"
     )
 
 
@@ -181,14 +177,6 @@ def resolve_deck(name, decks: dict) -> str:
     if tail:
         raise ValueError(f"deck {name!r} is ambiguous: {', '.join(sorted(tail))}")
     raise ValueError(f"no deck named {name!r}")
-
-
-def parse_config_reply(text: str) -> dict:
-    obj = parse_json_reply(text)
-    changes = obj.get("changes") or []
-    if not isinstance(changes, list):
-        raise ValueError("'changes' is not a list")
-    return {"reply": str(obj.get("reply", "")).strip(), "changes": [c for c in changes if isinstance(c, dict)]}
 
 
 def _validate(key: str, value, is_executable, provider: str = "claude"):

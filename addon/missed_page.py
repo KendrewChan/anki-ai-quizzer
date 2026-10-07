@@ -1,4 +1,4 @@
-"""📋 Today's Missed: a read-only page listing the notes whose Missed section was written today, by deck."""
+"""📋 Today's Missed: the AI Window's read-only tab listing the notes whose Missed section was written today, by deck."""
 
 import datetime
 import html
@@ -7,9 +7,9 @@ from aqt import mw
 
 from . import missed_today
 from .missed import _count_html
-from .chat_page import CSS as CHAT_CSS
+from .tab_page import CSS as TAB_CSS, Tab
 
-CSS = CHAT_CSS + """
+CSS = TAB_CSS + """
 <style>
 #cfg .deck { font-weight: 600; margin: 1em 0 0.2em; }
 #cfg .note { margin: 0.3em 0 0.6em 1em; } #cfg .front { opacity: 0.75; font-size: 0.9em; }
@@ -18,30 +18,11 @@ CSS = CHAT_CSS + """
 """
 
 
-class MissedPage:
-    STATE = "aiStudyMissed"
+class MissedPage(Tab):
     PREFIX = "aiMissed"
+    TITLE = "📋 Today's Missed"
 
-    def __init__(self, addon: str):
-        setattr(mw, f"_{self.STATE}State", self._enter)
-        setattr(mw, f"_{self.STATE}Cleanup", self._leave)
-
-    def open(self):
-        mw.moveToState(self.STATE)
-
-    def _enter(self, _old_state, *_args):
-        mw.bottomWeb.hide()
-        mw.web.stdHtml(self._page_html(), context=self)
-        mw.web.set_bridge_command(self._on_bridge, self)
-
-    def _leave(self, _new_state):
-        mw.bottomWeb.show()
-
-    def _on_bridge(self, message: str):
-        if message == f"{self.PREFIX}:back":
-            mw.moveToState("deckBrowser")
-
-    def _page_html(self) -> str:
+    def page_html(self) -> str:
         today = datetime.date.today().isoformat()  # the same clock that stamps the Missed section
         decks = missed_today.missed_on(mw.col, today)
         body = []
@@ -53,6 +34,5 @@ class MissedPage:
                             f'<i>({n["reviews"]} review{"s" if n["reviews"] != 1 else ""})</i></div><ul>{lis}</ul></div>')
         if not body:
             body.append("<p>Nothing missed today yet.</p>")
-        return (f'{CSS}<div id="cfg"><a class="back" onclick="pycmd(\'{self.PREFIX}:back\')">← Back</a>'
-                f"<h2>📋 Today's Missed ({today})</h2>{''.join(body)}</div>")
+        return f"{CSS}<div id=\"cfg\"><h2>📋 Today's Missed ({today})</h2>{''.join(body)}</div>"
 

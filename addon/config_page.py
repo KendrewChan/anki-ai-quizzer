@@ -1,4 +1,4 @@
-"""AI Study settings page, shown inside Anki's main window as its own state ("aiStudyConfig")."""
+"""⚙ Settings: the AI Window's settings tab. Plain controls; changes asked in words go through the chat."""
 
 import html
 import json
@@ -9,13 +9,13 @@ from collections import deque
 
 from aqt import mw
 
-from . import chat_page, config_ops
-from .chat_page import ChatPage, deck_ids
+from . import config_ops, tab_page
+from .tab_page import Tab, deck_ids
 from .fixes import Fixer
-from .session import (PROC_KW, PROVIDER_LABELS, auth_command, find_cli, list_models, make_backend, model_for,
-                      probe_model, provider_of, read_auth_status, resolved_model)
+from .session import (PROC_KW, PROVIDER_LABELS, auth_command, find_cli, list_models, model_for, probe_model,
+                      provider_of, read_auth_status, resolved_model)
 
-CSS = chat_page.CSS + """
+CSS = tab_page.CSS + """
 <style>
 #log .acts { margin: 0.3em 0 0.2em; } #log .acts button { margin: 0 0.4em 0.3em 0; color: initial; }
 .sect td.k .kl { opacity: 0.7; } .sect ol { margin: 0.2em 0 0 1.4em; padding: 0; }
@@ -38,7 +38,7 @@ CSS = chat_page.CSS + """
 .panel { margin: 0.3em 0 0.5em; padding: 0.6em 0.8em; border: 1px solid #8884; border-radius: 6px; }
 .panel .name { font-weight: 600; margin-bottom: 0.3em; } .panel .inh { opacity: 0.75; margin-top: 0.3em; }
 .panel .p { white-space: pre-wrap; }
-#cmd-bar { position: sticky; top: 0; z-index: 5; padding: 0.4em 0; background: var(--canvas, Canvas); }
+#cfg > .hint { opacity: 0.65; font-size: 0.9em; margin-bottom: 0.4em; }
 </style>
 """
 
@@ -50,7 +50,7 @@ def deck_prefix(deck: str) -> str:
 JS = """
 <script>
 window.aiCfg = {
-  update(logHtml, sectionsHtml, status, busy) {
+  update(logHtml, sectionsHtml) {
     const log = document.getElementById("log");
     log.innerHTML = logHtml; log.scrollTop = log.scrollHeight;
     const sections = document.getElementById("sections");
@@ -58,30 +58,11 @@ window.aiCfg = {
     const open = new Set(Array.from(sections.querySelectorAll("details[open]")).map(d => d.dataset.deck));
     sections.innerHTML = sectionsHtml;
     sections.querySelectorAll("details").forEach(d => { if (open.has(d.dataset.deck)) d.open = true; });
-    document.getElementById("status").textContent = status;
-    const cmd = document.getElementById("cmd");
-    cmd.disabled = busy; if (!busy) cmd.focus({preventScroll: true});
     window.scrollTo(0, y);
-  },
-  prefill(prefix) {  // clicking a deck starts a message about it, unless the user already typed their own
-    const cmd = document.getElementById("cmd"), v = cmd.value;
-    if (!v.trim()) cmd.value = prefix;
-    else if (this.prefix && v.startsWith(this.prefix)) cmd.value = prefix + v.slice(this.prefix.length);
-    else return;
-    this.prefix = prefix;
-    cmd.focus({preventScroll: true});
-    cmd.setSelectionRange(cmd.value.length, cmd.value.length);
-    cmd.dispatchEvent(new Event("input"));  // keep the saved draft in step
   },
   deselect(deck) {
     const d = document.querySelector(`#sections details[data-deck="${CSS.escape(deck)}"]`);
     if (d) d.open = false;
-    const cmd = document.getElementById("cmd");
-    if (this.prefix && cmd.value.startsWith(this.prefix)) {
-      cmd.value = cmd.value.slice(this.prefix.length);
-      cmd.dispatchEvent(new Event("input"));
-    }
-    this.prefix = null;
   },
   loadModels(e, sel) {
     if (sel.dataset.loaded) return;
@@ -107,15 +88,14 @@ window.aiCfg = {
 """
 
 
-class ConfigPage(ChatPage):
-    STATE = "aiStudyConfig"
+class ConfigPage(Tab):
     PREFIX = "aiCfg"
+    TITLE = "⚙ Settings"
 
-    def __init__(self, addon: str, on_config_changed):
-        super().__init__(addon)
+    def __init__(self, addon: str, host, on_config_changed):
+        super().__init__(addon, host)
         self.on_config_changed = on_config_changed
-        self.session = None
-        self.replies = deque(maxlen=3)  # (text, is_error, actions): only the latest replies are shown
+        self.replies = deque(maxlen=3)  # (text, is_error, actions): fixes, login, updates — the latest few
         self._actions = {}  # button id -> callable, for buttons inside replies
         self._next_id = 0  # for _actions keys
         self.fixer = Fixer(self)
@@ -144,9 +124,8 @@ class ConfigPage(ChatPage):
             rejected += [line for line in log if line.startswith("✗")]
         if new != cfg:
             self._probe_failed.clear()
-            chat_page.save_config(self.addon, new, cfg)
+            tab_page.save_config(self.addon, new, cfg)
             self.on_config_changed()
-            self._stop()
             if provider_of(new) != provider_of(cfg):
                 self._refresh_auth()
         return auth
@@ -157,26 +136,32 @@ class ConfigPage(ChatPage):
     def refresh(self):
         self._update(None)
 
+    def apply_from_chat(self, changes) -> list:
+        """Settings changes the chat asked for -> the rejected ones as "✗ …" lines. Logging out is a button only."""
+        rejected = ["✗ log out with the Log out button in the Settings tab" for c in changes if "logout" in c]
+        for action in self.apply([c for c in changes if "logout" not in c], rejected):
+            self._run_auth(action)
+        self._update(None)
+        return rejected
+
     # --- page ---
 
-    def _entered(self):
+    def entered(self):
         self._probe_failed.clear()
         self._refresh_auth()
         self.fixer.check_on_open()
-        if self.busy:  # a message sent before leaving is still being answered
-            self._update("Thinking…")
 
     def _on_message(self, command: str, arg: str):
         if command == "select" and arg and arg == self.selected:  # second click: fold it and drop the prefix
             self.selected = None
             self._update(None)
-            if mw.state == self.STATE:
-                mw.web.eval(f"window.aiCfg && aiCfg.deselect({json.dumps(arg)});")
+            self.eval(f"window.aiCfg && aiCfg.deselect({json.dumps(arg)});")
+            self.host.unprefill()
         elif command == "select":
             self.selected = arg
             self._update(None)
-            if mw.state == self.STATE and arg:
-                mw.web.eval(f"window.aiCfg && aiCfg.prefill({json.dumps(deck_prefix(arg))});")
+            if arg:
+                self.host.prefill(deck_prefix(arg))
         elif command == "models":
             self._load_models()
         elif command == "model":
@@ -201,44 +186,8 @@ class ConfigPage(ChatPage):
             self.fixer.update()
         elif command == "login":
             self.login()
-
-    def _send(self, text: str):
-        cfg = self.cfg()
-        self.busy = True
-        self._update("Thinking…")
-        provider, _path = self.provider(cfg)
-        in_use = resolved_model(provider, model_for(cfg))
-        prompt = config_ops.config_prompt(cfg, self.auth, text, deck_ids(), self.selected, in_use)
-        self._session(cfg).request(0, prompt, config_ops.parse_config_reply, 90, self._on_reply)
-
-    def _on_reply(self, _id, result, err):
-        self.busy = False
-        if err:
-            self.say(f"AI error: {err.message}", err=True)
-            self._update("")
-            if mw.state != self.STATE:
-                self._stop()
-            return
-        rejected = []
-        actions = self.apply(result["changes"], rejected)
-        reply = " ".join(filter(None, [result["reply"], *rejected])) or "Done."
-        self.say(reply, err=bool(rejected))
-        for action in actions:
-            self._run_auth(action)
-        self._update("")
-        if mw.state != self.STATE:  # answered after the user left: don't keep the CLI running
-            self._stop()
-
-    def _session(self, cfg):
-        if self.session is None:
-            self.session = make_backend(cfg, config_ops.CONFIG_SYSTEM_PROMPT, self.tmpdir(), mw.taskman.run_on_main)
-        return self.session
-
-    def _stop(self):
-        """Config changed (provider, model, path) or page left: the next message starts a fresh backend."""
-        if self.session is not None:
-            self.session.close()
-            self.session = None
+        elif command == "logout":
+            self._run_auth("logout")
 
     def _refresh_auth(self):
         provider, path = self.provider()
@@ -270,7 +219,7 @@ class ConfigPage(ChatPage):
                 options, error = [], f"couldn't load models: {e}"
             current = resolved_model(provider, configured) or configured
             options = [(v, label) for v, label in options if v != configured and label.split(" ")[0] != current]
-            mw.taskman.run_on_main(lambda: mw.web.eval(
+            mw.taskman.run_on_main(lambda: self.eval(
                 f"window.aiCfg && aiCfg.setModels({json.dumps(options)}, {json.dumps(error)});"))
 
         threading.Thread(target=work, daemon=True).start()
@@ -308,8 +257,7 @@ class ConfigPage(ChatPage):
 
     def _set_auth(self, ok, text):
         self.logged_in, self.auth = ok, text
-        if mw.state == self.STATE:
-            self._update(None)
+        self._update(None)
 
     def _run_auth(self, action: str):
         """login opens the browser via Claude Code's own flow; the add-on never sees credentials."""
@@ -350,12 +298,10 @@ class ConfigPage(ChatPage):
 
     # --- rendering ---
 
-    def _update(self, status):
-        if mw.state != self.STATE:
-            return
-        status = "" if status is None else status
-        args = [self._log_html(), self._sections_html(), status, self.busy]
-        mw.web.eval(f"window.aiCfg && aiCfg.update({', '.join(json.dumps(a) for a in args)});")
+    def _update(self, _status=None):
+        if self.shown():
+            args = [self._log_html(), self._sections_html()]
+            self.eval(f"window.aiCfg && aiCfg.update({', '.join(json.dumps(a) for a in args)});")
 
     def say(self, text: str, err: bool = False, actions=()):
         """Add a reply; `actions` = [(label, callable)] rendered as buttons under it."""
@@ -371,9 +317,6 @@ class ConfigPage(ChatPage):
         self._update(None)
 
     def _log_html(self) -> str:
-        if not self.replies:
-            return ('<div class="ai">Tell me what to change, in plain words — e.g. "use opus", '
-                    '"give me 90 seconds to answer", "grade more strictly", "undo that".</div>')
         out = []
         for t, bad, acts in self.replies:
             buttons = "".join(
@@ -387,6 +330,8 @@ class ConfigPage(ChatPage):
         login = html.escape(self.auth)
         if self.logged_in is False:
             login += ' <button onclick="pycmd(\'aiCfg:login\')">Log in</button>'
+        elif self.logged_in:
+            login += ' <button onclick="pycmd(\'aiCfg:logout\')">Log out</button>'
         provider, found = self.provider(cfg)
         # A plain control, not the chat: if the current provider is broken, the chat can't fix it.
         options = "".join(
@@ -480,11 +425,11 @@ class ConfigPage(ChatPage):
         return f'<div class="tree">{tree}</div>{hint}'
 
 
-    def _page_html(self) -> str:
+    def page_html(self) -> str:
         return (
-            f'{CSS}<div id="cfg"><a class="back" onclick="pycmd(\'aiCfg:back\')">← Back</a>'
-            f"<h2>AI Study settings</h2>"
+            f'{CSS}<div id="cfg"><h2>AI Study settings</h2>'
+            '<div class="hint">Tell the chat on the right what to change, in plain words — e.g. "use opus", '
+            '"give me 90 seconds to answer", "grade more strictly", "undo that".</div>'
             f'<div id="log">{self._log_html()}</div>'
-            f'<div id="cmd-bar"><input id="cmd" value="{html.escape(self.draft)}" placeholder="Tell the AI what to change…">'
-            f'<div id="status"></div></div><div id="sections">{self._sections_html()}</div></div>{JS}'
+            f'<div id="sections">{self._sections_html()}</div></div>{JS}'
         )
