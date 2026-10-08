@@ -22,10 +22,10 @@ CSS = """
 html { overflow-y: scroll; }  /* the scrollbar always takes its room, so tabs don't shift sideways */
 body { margin: 0; padding: 0; }
 #shell { display: flex; min-height: 100vh; }
-#nav { flex: none; width: 11.5em; box-sizing: border-box; padding: 1em 0.5em; border-right: 1px solid #8884;
+#nav { flex: none; width: 13.5em; box-sizing: border-box; padding: 1em 0.5em; border-right: 1px solid #8884;
        position: sticky; top: 0; height: 100vh; text-align: left; }
 #nav a { display: block; padding: 0.45em 0.7em; margin-bottom: 2px; border-radius: 6px; cursor: pointer;
-         color: inherit; text-decoration: none; }
+         color: inherit; text-decoration: none; white-space: nowrap; }
 #nav a:hover { background: #8882; } #nav a.on { background: #8883; font-weight: 600; }
 #main { flex: 1; min-width: 0; }
 #main #cfg { max-width: none; margin: 0; padding: 0.8em 1.5em; }  /* every tab the same width */
