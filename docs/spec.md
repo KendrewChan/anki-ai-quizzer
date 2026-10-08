@@ -35,7 +35,7 @@ Run an AI study loop inside the Anki desktop reviewer: the AI turns each card in
 | `health.py` | Self-check, error classification, reviewer failure policy, update / rollback | no |
 | `fixes.py` | Fix buttons in the Settings tab's messages; talks to the tab only through `cfg`, `provider`, `apply`, `login`, `say`, `refresh` | yes |
 | `state.py` | What the add-on learns about the CLIs: real model names, `last_good` versions. `user_files/state.json`, kept by Anki across updates; never in the config or its undo history | no |
-| `style.md` | Formatting guide (bold, note-field HTML, LaTeX) appended to the tutor and chat system prompts | — |
+| `style.md` | Formatting guide (bold, note-field HTML and structure, terse wording, LaTeX, a good/bad example) appended to the tutor and chat system prompts | — |
 | `config.json` | Shipped defaults (this computer's settings live in the gitignored `meta.json`; synced ones in the collection, see Synced settings) | — |
 
 Everything that doesn't import `aqt` is unit-tested with plain pytest.
