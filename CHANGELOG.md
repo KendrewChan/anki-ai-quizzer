@@ -4,6 +4,7 @@ What changed in each version, newest first. How the add-on works today is in [do
 
 ## Unreleased
 
+- The AI Window's tab list is a little wider, so "✨ Generate/Update" stays on one line next to its icon.
 - A deck prompt that mentions misses (e.g. "hint at what I missed before") now gets the card's Missed points when the questions are written, so hints can point at them.
 - The AI Window's chat now sees everything from every tab (settings, the cards of any deck, staged cards, today's misses) and can read any deck from any chat.
 - Deck prompts set from a deck click are handled the same way every time: your wording is kept, worked into the deck's existing prompt (replaced only when you say so) and quoted in the reply.
