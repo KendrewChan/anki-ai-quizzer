@@ -89,13 +89,13 @@ def test_codex_command_is_isolated_and_reads_stdin():
 
 
 def test_web_commands_add_only_web_search():
-    """The chat may search and fetch the web; nothing else opens up, and grading's commands stay closed."""
+    """The chat gets read-only tools (files, web); nothing that writes or runs opens up, and grading's commands stay closed."""
     codex = session.build_codex_command("/x/codex", "", "/tmp/w", web=True)
     assert 'web_search="live"' in codex and 'web_search="disabled"' not in codex
     assert codex[codex.index("-s") + 1] == "read-only" and "shell_tool" in codex
     claude = session.build_command("/x/claude", "", "S", web=True)
-    assert claude[claude.index("--tools") + 1] == "WebSearch,WebFetch"
-    assert claude[claude.index("--allowedTools") + 1] == "WebSearch,WebFetch"  # nobody can answer a prompt
+    assert claude[claude.index("--tools") + 1] == "Read,Grep,Glob,WebSearch,WebFetch"
+    assert claude[claude.index("--allowedTools") + 1] == "Read,Grep,Glob,WebSearch,WebFetch"  # nobody can answer a prompt
     assert claude[claude.index("--setting-sources") + 1] == "" and "--safe-mode" in claude
     plain = session.build_command("/x/claude", "", "S")
     assert plain[plain.index("--tools") + 1] == "" and "--allowedTools" not in plain

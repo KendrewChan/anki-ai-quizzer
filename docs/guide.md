@@ -26,7 +26,7 @@ Study in the Anki reviewer with an AI tutor (Claude Code or Codex): it turns eac
 
 One window for the add-on's AI features: **⚙ Settings**, **✨ Generate/Update** and **📋 Today's Missed** as tabs on the left, and a chat on the right. It's a separate window, so you can keep it open while you review.
 
-The chat works like a general AI assistant: ask anything, and it can search and read the web. It can also act on your Anki from any tab: change settings, make or update cards, or go through what you missed today. It sees your settings, every deck's cards, the staged cards and today's misses from whichever tab you're on. It remembers the conversation until you press **Clear** or quit Anki (closing the window keeps it). Nothing is saved between Anki runs: deck prompts and rules are where lasting instructions belong. The chat is always open on the right. Highlight text in any tab and click the blue **AI** bubble to ask about it.
+The chat works like a general AI assistant: ask anything, and it can search and read the web and read files on your computer (it cannot change or run anything itself). It can also act on your Anki from any tab: change settings, make or update cards, or go through what you missed today. It sees your settings, every deck's cards, the staged cards and today's misses from whichever tab you're on. It remembers the conversation until you press **Clear** or quit Anki (closing the window keeps it). Nothing is saved between Anki runs: deck prompts and rules are where lasting instructions belong. The chat is always open on the right. Highlight text in any tab and click the blue **AI** bubble to ask about it.
 
 ## Settings (⚙ Settings)
 
@@ -67,7 +67,7 @@ Open **🤖 AI Window → ⚙ Settings**: it checks your AI CLI on open. If some
 
 ## Notes
 
-- Studying uses your own plan's usage (Claude or ChatGPT). Grading keeps one `claude` process open per review session; Codex starts one per message. Each chat keeps its own (web search and web fetch are its only tools).
+- Studying uses your own plan's usage (Claude or ChatGPT). Grading keeps one `claude` process open per review session; Codex starts one per message. Each chat keeps its own (read-only file tools, web search and web fetch are its only tools).
 - Built and used on macOS. Windows and Linux are covered by automated tests but not yet tried in Anki itself. If the CLI isn't found, tell the chat its path ("claude path is /path/to/claude", or the same for codex).
 
 ## Development
