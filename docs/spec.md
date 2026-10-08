@@ -50,7 +50,7 @@ Everything that doesn't import `aqt` is unit-tested with plain pytest.
 - **Isolation** (both run in an empty temp directory with no user settings, hooks, plugins, MCP servers or tools):
   - Claude: `--safe-mode --setting-sources "" --strict-mcp-config --tools "" --disable-slash-commands --no-session-persistence`. `--bare` is not usable: it can't use subscription login.
   - Codex: `--ephemeral --ignore-user-config --ignore-rules --skip-git-repo-check -s read-only --disable shell_tool|apps|browser_use|computer_use|plugins -c web_search="disabled"`.
-  - The chat alone (`web=True` in `make_backend` / `build_command` / `build_codex_command`) may search and read the web, and nothing more: Claude gets `--tools WebSearch,WebFetch --allowedTools WebSearch,WebFetch` (pre-approved: nobody can answer a permission prompt), Codex `-c web_search="live"`. Grading and question rewrites never get them.
+  - The chat alone (`web=True` in `make_backend` / `build_command` / `build_codex_command`) gets read-only tools and nothing more (no writes, no shell): Claude gets `--tools Read,Grep,Glob,WebSearch,WebFetch --allowedTools` the same list (pre-approved: nobody can answer a permission prompt), Codex `-c web_search="live"`. Grading and question rewrites never get them.
 - API: `request(card_id, prompt, parse, timeout, callback)` — callbacks on the main thread; the "ask" and "grade" prompts come from `grading.py`. One request in flight, later ones queue. Replies are tagged with their card id; replies for a card no longer shown are dropped.
 - **Models**: `models: {claude, codex}`; `""` = the CLI's default. Settings always shows the real model id, read from the CLI's own output (Claude's stream-json `init` event, Codex's stderr `model:` header), saved by `session.remember_model` into `state.py` the moment a probe or real call reports it (rendering never writes). The two keys older versions kept in the config (`resolved_models`, `last_good`) are dropped on the next settings change.
 - **Login**: Claude `claude auth status|login|logout`; Codex `codex login status` / `codex login` / `codex logout`. On Windows, login runs in its own console window (`CREATE_NEW_CONSOLE`, no captured output): the CLI may print a sign-in link and wait for a pasted code, which a hidden process can neither show nor receive. Elsewhere it runs hidden and the CLI opens the browser.
@@ -115,7 +115,7 @@ A window of its own (a `QMainWindow`, like Browse), so it can stay open while re
 
 ## The AI chat (`assistant.py`, `assistant_ops.py`)
 
-One chat for everything, in a side panel of each window: the AI Window, the reviewer (highlight-to-ask), Browse and Add Cards. Each window has its own `Conversation`. Like a general assistant it answers anything; it can also change settings, make and update cards and edit the open note, and it may search and read the web (see Isolation).
+One chat for everything, in a side panel of each window: the AI Window, the reviewer (highlight-to-ask), Browse and Add Cards. Each window has its own `Conversation`. Like a general assistant it answers anything; it can also change settings, make and update cards and edit the open note, and it may read local files and search and read the web (see Isolation).
 
 - **Sections**: `settings` (config_ops `SETTINGS_RULES` / `settings_context`), `cards` (generate_ops `CARDS_RULES` / `cards_context`), `missed` (today's Missed points, read-only; `assistant_ops.missed_context`), `note` (note_chat `NOTE_RULES` and the open note; only where one is open). The window decides which are loaded at first:
 
