@@ -204,6 +204,10 @@ class _Backend:
             pass
         self._kill()
 
+    def interrupt(self):
+        """Stop the reply being written and drop everything pending. Stateless here: the same as stop()."""
+        self.stop()
+
     def close(self):
         self.stop()
         self._jobs.put(None)
@@ -261,7 +265,31 @@ class ClaudeSession(_Backend):
         self._model = model
         self._lines = None
         self._discard = 0  # results still owed to requests that timed out
+        self._write = threading.Lock()  # stdin: the worker sends prompts, interrupt() comes from the caller's thread
+        self._interrupts = 0
         super().__init__(cmd, cwd, dispatch)
+
+    def interrupt(self):
+        """Stop the reply being written and drop everything pending, keeping the process and its conversation: the
+        CLI's stream-json interrupt ends the turn with an error result, which goes to the dropped request."""
+        self._gen += 1
+        try:
+            while True:
+                self._jobs.get_nowait()
+        except queue.Empty:
+            pass
+        proc = self._proc
+        if proc is None or proc.poll() is not None:
+            return
+        self._interrupts += 1
+        msg = {"type": "control_request", "request_id": f"interrupt-{self._interrupts}",
+               "request": {"subtype": "interrupt"}}
+        try:
+            with self._write:
+                proc.stdin.write(json.dumps(msg) + "\n")
+                proc.stdin.flush()
+        except (BrokenPipeError, OSError, ValueError):
+            self._kill()
 
     def _retry_prompt(self, prompt: str) -> str:
         return RETRY_PROMPT  # the original prompt is already in this conversation
@@ -270,8 +298,9 @@ class ClaudeSession(_Backend):
         proc, lines = self._ensure_proc()
         msg = {"type": "user", "message": {"role": "user", "content": prompt}}
         try:
-            proc.stdin.write(json.dumps(msg) + "\n")
-            proc.stdin.flush()
+            with self._write:
+                proc.stdin.write(json.dumps(msg) + "\n")
+                proc.stdin.flush()
         except (BrokenPipeError, OSError, ValueError):
             self._drop_proc(proc)
             raise SessionError("crashed", "Claude session crashed; it will restart on the next card. " + self._stderr_tail())

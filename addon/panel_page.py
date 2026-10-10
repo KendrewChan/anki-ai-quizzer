@@ -7,6 +7,7 @@ _PANEL_HTML = """
 html, body { height: 100%; margin: 0; }
 body { display: flex; flex-direction: column; box-sizing: border-box; padding: 0.5em 0.7em; font-size: 14px; text-align: left; }
 #hd { display: flex; align-items: center; justify-content: space-between; font-weight: 700; margin-bottom: 0.4em; }
+#stop { font: inherit; font-size: 12px; font-weight: 400; margin-right: 6px; padding: 1px 8px; cursor: pointer; display: none; }
 #clr { font: inherit; font-size: 12px; font-weight: 400; margin-right: 6px; padding: 1px 8px; cursor: pointer; }
 #x { cursor: pointer; opacity: 0.6; font-size: 20px; line-height: 1; padding: 0 4px; user-select: none; }
 #x:hover { opacity: 1; }
@@ -33,7 +34,7 @@ body { display: flex; flex-direction: column; box-sizing: border-box; padding: 0
 #cmd { width: 100%; box-sizing: border-box; margin-top: 0.5em; padding: 0.5em; font: inherit; border-radius: 6px; resize: none;
        border: 1px solid #8888; background: transparent; color: inherit; }
 </style>
-<div id="hd"><span>AI Study</span><span><button id="clr" title="Clear the chat">Clear</button><span id="x" title="Close"__NOX__>&times;</span></span></div>
+<div id="hd"><span>AI Study</span><span><button id="stop" title="Stop the answer being written; queued messages go on">Cancel</button><button id="clr" title="Clear the chat">Clear</button><span id="x" title="Close"__NOX__>&times;</span></span></div>
 <div id="log"><div class="hint">__HINT__</div></div>
 <div id="quote"><span class="lbl">HIGHLIGHTED</span><span id="qtext"></span><span class="rm" title="Remove">&times;</span></div>
 <div id="quick"__NOQUICK__><button id="explain" title="Explain the highlighted text (or the card)">Explain</button> <button id="simpler" title="Explain in simpler, less technical terms, with an everyday example">Simpler</button> <button id="doit" title="Make the change the AI just suggested">Do it</button></div>
@@ -43,7 +44,12 @@ body { display: flex; flex-direction: column; box-sizing: border-box; padding: 0
   const log = document.getElementById("log"), cmd = document.getElementById("cmd");
   const hint = log.querySelector(".hint").cloneNode(true);
   const quoteEl = document.getElementById("quote"), qtext = document.getElementById("qtext");
-  let sel = "", busy = false, wait = null, stale = 0;  // stale: replies still to come for messages that were cleared
+  const stop = document.getElementById("stop");
+  // Messages are answered one at a time, in order; the rest wait as "Queued". waits: message id -> its waiting line,
+  // replaced by the reply. A reply for an id not in it (the chat was cleared meanwhile) is dropped.
+  let sel = "", next = 0, waits = {};
+  const pending = () => Object.keys(waits).length;
+  const showStop = () => { stop.style.display = pending() ? "" : "none"; };
   const typeset = el => { if (window.MathJax && MathJax.typesetPromise) MathJax.typesetPromise([el]).catch(() => {}); };
   function add(cls, html, text) {
     const d = document.createElement("div"); d.className = cls;
@@ -53,19 +59,20 @@ body { display: flex; flex-direction: column; box-sizing: border-box; padding: 0
   }
   function setQuote(s) { sel = s; qtext.textContent = s; quoteEl.style.display = s ? "block" : "none"; }
   function clearAll() {
-    if (busy) stale++;
-    log.innerHTML = '<div class="hint">' + hint.innerHTML + "</div>"; cmd.value = ""; setQuote(""); busy = false; wait = null;
+    log.innerHTML = '<div class="hint">' + hint.innerHTML + "</div>"; cmd.value = ""; setQuote(""); waits = {}; showStop();
   }
   document.getElementById("clr").addEventListener("click", () => { clearAll(); pycmd("clear"); cmd.focus(); });
+  stop.addEventListener("click", () => { pycmd("cancel"); cmd.focus(); });
   document.getElementById("x").addEventListener("click", () => pycmd("hide"));
   quoteEl.querySelector(".rm").addEventListener("click", () => { setQuote(""); cmd.focus(); });
   function send(text) {
-    if (busy || !text.trim()) return;
+    if (!text.trim()) return;
     if (sel) add("q", null, sel);
     add("you", null, text.trim());
-    pycmd("send:" + JSON.stringify({sel: sel, text: text}));
-    cmd.value = ""; setQuote(""); busy = true;
-    wait = add("wait", null, "Thinking…");
+    const id = ++next;
+    waits[id] = add("wait", null, pending() ? "Queued" : "Thinking…");
+    pycmd("send:" + JSON.stringify({id: id, sel: sel, text: text}));
+    cmd.value = ""; setQuote(""); showStop();
   }
   cmd.addEventListener("keydown", function (e) {
     e.stopPropagation();  // Anki's shortcuts must not fire while typing
@@ -80,11 +87,17 @@ body { display: flex; flex-direction: column; box-sizing: border-box; padding: 0
   document.getElementById("doit").addEventListener("click", () => { send("Do it: make the change you just suggested."); cmd.focus(); });
   window.aiPanel = {
     quote(s) { setQuote(s); cmd.focus(); },  // a new highlight replaces the previous one
-    reply(html, err, actions) {  // actions: [[label, key]] -> buttons sending "act:<key>"
-      if (stale) { stale--; return; }
-      if (wait) { wait.remove(); wait = null; }
-      busy = false;
-      const d = add("ai" + (err ? " err" : ""), html);
+    reply(id, html, err, actions) {  // id null: not about a message. actions: [[label, key]] -> buttons sending "act:<key>"
+      const cls = "ai" + (err ? " err" : ""), wait = waits[id];
+      let d;
+      if (id === null) d = add(cls, html);
+      else if (!wait) return;
+      else {
+        delete waits[id]; showStop();
+        d = document.createElement("div"); d.className = cls; d.innerHTML = html;
+        wait.replaceWith(d);  // right under its message, above any queued ones
+        if (!pending()) log.scrollTop = log.scrollHeight;
+      }
       if (actions && actions.length) {
         const row = document.createElement("div"); row.className = "acts";
         actions.forEach(([label, key]) => {
@@ -96,8 +109,8 @@ body { display: flex; flex-direction: column; box-sizing: border-box; padding: 0
       typeset(d);
       cmd.focus();
     },
-    status(text) { if (wait && !stale) wait.textContent = text; },  // progress of a message still being answered
-    clear() { clearAll(); stale = 0; },
+    status(id, text) { if (waits[id]) waits[id].textContent = text; },  // progress of a message being answered
+    clear() { clearAll(); },
     prefill(prefix) {  // the Settings tab's deck click starts a message about it, unless the user typed their own
       const v = cmd.value;
       if (!v.trim()) cmd.value = prefix;

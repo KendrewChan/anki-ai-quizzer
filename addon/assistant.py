@@ -44,7 +44,8 @@ class Context:
 class _Turn:
     """One user message, through all its AI calls."""
 
-    def __init__(self, ctx: Context, text: str, sel: str):
+    def __init__(self, mid, ctx: Context, text: str, sel: str):
+        self.mid = mid  # the panel's id of the message, for its replies and progress
         self.ctx, self.text, self.sel = ctx, text, sel
         self.rounds = 0
         self.found = ""  # search results appended to the message
@@ -67,6 +68,7 @@ class Conversation:
         self.panel = ReviewPanel(self.send, window, hint, self._on_command, quick, closable)
         self.history = deque(maxlen=assistant_ops.HISTORY)  # (user message, reply), for CLIs that don't remember
         self.turn = None  # the message being answered
+        self.queue = deque()  # messages sent meanwhile, (id, Context, text, selection), answered in order
         self.backend = None  # the chat's CLI; Claude's process keeps the conversation
         self.backend_key = None  # (provider, model, path) it was started with: a change starts a new one
         self.remembers = False  # the backend keeps the conversation (Claude)
@@ -81,29 +83,39 @@ class Conversation:
 
     # --- panel ---
 
-    def send(self, sel: str, text: str):
+    def send(self, mid, sel: str, text: str):
+        """Queue the message with what the user has open now (the note it is about), and answer it in its turn."""
         def done(ctx):
-            try:
-                if isinstance(ctx, str):
-                    self.panel.reply(ctx, True)
-                    return
-                self.cancel()  # after Clear the panel takes a new message while the last one may still run
-                ctx.sections |= self.loaded
-                self.loaded |= ctx.sections - {"note"}
-                self.turn = _Turn(ctx, text, sel)
-                self._ask(self.turn)
-            except Exception as e:  # runs in Qt callbacks, where errors would vanish and leave the panel on "Thinking…"
-                self.turn = None
-                self.panel.reply(f"Failed: {type(e).__name__}: {e}", True)
+            if isinstance(ctx, str):
+                self.panel.reply(mid, ctx, True)
+                return
+            self.queue.append((mid, ctx, text, sel))
+            self._next()
 
         try:
             self.context(sel, done)
         except Exception as e:
-            self.panel.reply(f"Failed: {type(e).__name__}: {e}", True)
+            self.panel.reply(mid, f"Failed: {type(e).__name__}: {e}", True)
+
+    def _next(self):
+        """Start the next queued message when none is being answered."""
+        while self.turn is None and self.queue:
+            mid, ctx, text, sel = self.queue.popleft()
+            try:
+                ctx.sections |= self.loaded
+                self.loaded |= ctx.sections - {"note"}
+                self.turn = _Turn(mid, ctx, text, sel)
+                self.panel.status(mid, "Thinking…")
+                self._ask(self.turn)
+            except Exception as e:  # runs in Qt callbacks, where errors would vanish and leave the panel on "Thinking…"
+                self.turn = None
+                self.panel.reply(mid, f"Failed: {type(e).__name__}: {e}", True)
 
     def _on_command(self, command: str, arg: str):
         if command == "clear":  # the page already emptied itself; a reply still coming is dropped there
             self.clear()
+        elif command == "cancel":
+            self.stop_current()
         elif command == "act":
             fn = self._actions.pop(arg, None)
             if fn:
@@ -111,6 +123,7 @@ class Conversation:
 
     def clear(self):
         """Forget the conversation: stop the CLI (its memory goes with it) and anything being answered."""
+        self.queue.clear()
         self.cancel()
         self._stop()
         self.history.clear()
@@ -135,6 +148,19 @@ class Conversation:
             if t.owns_cards:
                 self.host.generate.set_status(False)
         self._stop_batch()
+
+    def stop_current(self):
+        """Cancel: stop the message being answered; the CLI keeps the conversation and the queue goes on."""
+        t = self.turn
+        if t is None:
+            return
+        self.cancel()
+        if self.backend is not None:
+            self.backend.interrupt()
+        self.since = ("the user cancelled your answer to their previous message before it finished; changes not "
+                      "yet applied were dropped")
+        self.panel.reply(t.mid, "Cancelled.", True)
+        self._next()
 
     def _stop(self):
         if self.backend is not None:
@@ -230,7 +256,7 @@ class Conversation:
         return blocks
 
     def _progress(self, t: _Turn, text: str):
-        self.panel.status(text)
+        self.panel.status(t.mid, text)
         if t.owns_cards:
             self.host.generate.set_status(True, text, batching=bool(t.batch))
 
@@ -401,7 +427,8 @@ class Conversation:
             self._next_key += 1
             self._actions[str(self._next_key)] = fn
             keys.append((label, str(self._next_key)))
-        self.panel.reply(text, err, keys)
+        self.panel.reply(t.mid, text, err, keys)
+        self._next()
 
 
 def search_notes(query: str, last: bool) -> str:
