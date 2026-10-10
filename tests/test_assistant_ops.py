@@ -21,6 +21,7 @@ def test_subagent_rules_only_when_the_cli_has_them():
     sp = a.system_prompt(agents=True)
     assert sp.index(note_chat.NOTE_RULES) < sp.index(a.AGENTS_RULES) < sp.index(textutil.STYLE_GUIDE)
     assert "fresh context" in a.AGENTS_RULES and "not during a BATCH" in a.AGENTS_RULES
+    assert f"at most {a.MAX_AGENTS} subagents at a time" in a.AGENTS_RULES and a.MAX_AGENTS == 5
 
 
 def test_base_explains_need_web_and_untrusted_data():
