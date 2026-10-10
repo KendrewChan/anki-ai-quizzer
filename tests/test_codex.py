@@ -94,8 +94,8 @@ def test_web_commands_add_only_web_search():
     assert 'web_search="live"' in codex and 'web_search="disabled"' not in codex
     assert codex[codex.index("-s") + 1] == "read-only" and "shell_tool" in codex
     claude = session.build_command("/x/claude", "", "S", web=True)
-    assert claude[claude.index("--tools") + 1] == "Read,Grep,Glob,WebSearch,WebFetch"
-    assert claude[claude.index("--allowedTools") + 1] == "Read,Grep,Glob,WebSearch,WebFetch"  # nobody can answer a prompt
+    assert claude[claude.index("--tools") + 1] == "Read,Grep,Glob,WebSearch,WebFetch,Agent"
+    assert claude[claude.index("--allowedTools") + 1] == "Read,Grep,Glob,WebSearch,WebFetch,Agent"  # nobody can answer a prompt
     assert claude[claude.index("--setting-sources") + 1] == "" and "--safe-mode" in claude
     plain = session.build_command("/x/claude", "", "S")
     assert plain[plain.index("--tools") + 1] == "" and "--allowedTools" not in plain

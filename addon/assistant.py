@@ -16,7 +16,7 @@ from .session import make_backend, model_for, provider_of, resolved_model
 from .side_panel import ReviewPanel
 from .tab_page import deck_ids, load_config
 
-TIMEOUT_S = 300  # web searches and big card requests take a while
+TIMEOUT_S = 600  # web searches, big card requests and subagent reviews take a while (Claude: per streamed line)
 _ALL = set()  # open conversations, closed with the profile
 
 
@@ -153,8 +153,8 @@ class Conversation:
         key = (provider, model_for(cfg), cfg.get(f"{provider}_path") or "")
         if self.backend is None or key != self.backend_key:
             self._stop()
-            self.backend = make_backend(cfg, assistant_ops.system_prompt(), self._tmpdir(), mw.taskman.run_on_main,
-                                        web=True)
+            self.backend = make_backend(cfg, assistant_ops.system_prompt(provider == "claude"), self._tmpdir(),
+                                        mw.taskman.run_on_main, web=True)
             self.backend_key, self.remembers = key, provider == "claude"
         return self.backend
 
@@ -182,7 +182,8 @@ class Conversation:
             prompt = assistant_ops.message(t.ctx.where, blocks, t.text, t.sel, list(self.history),
                                            f"\n\n{generate_ops.batch_line(t.batch[0], len(t.batch[1]))}")
             self._stop_batch()
-            backend = self.batch_backend = make_backend(cfg, assistant_ops.system_prompt(), self._tmpdir(),
+            agents = provider_of(cfg) == "claude"
+            backend = self.batch_backend = make_backend(cfg, assistant_ops.system_prompt(agents), self._tmpdir(),
                                                         mw.taskman.run_on_main, web=True)
         else:
             backend = self._backend(cfg)
