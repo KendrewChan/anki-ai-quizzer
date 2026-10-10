@@ -13,6 +13,7 @@ import re
 import shutil
 import subprocess
 import threading
+import uuid
 from collections import deque
 
 from . import state
@@ -128,11 +129,14 @@ def system_prompt_file(cwd: str, text: str) -> str:
 
 
 def build_command(claude_path: str, model: str, prompt_file: str, web: bool = False) -> list:
+    """--replay-user-messages: each message comes back when its turn starts, so ClaudeSession can tell its reply from
+    a turn the CLI started by itself (a background subagent finishing)."""
     return [
         claude_path, "-p",
         "--input-format", "stream-json",
         "--output-format", "stream-json",
         "--verbose",
+        "--replay-user-messages",
         *(WEB_FLAGS if web else ISOLATION_FLAGS),
         *(["--model", model] if model else []),
         "--system-prompt-file", prompt_file,
@@ -259,12 +263,15 @@ class _Backend:
 
 
 class ClaudeSession(_Backend):
-    """One long-running claude process; the conversation persists only to save startup time."""
+    """One long-running claude process; the conversation persists only to save startup time.
+
+    A message's reply is the first result after the CLI replays that message: earlier results belong to requests that
+    timed out or to turns the CLI started by itself (a background subagent finishing starts one, unasked).
+    """
 
     def __init__(self, cmd: list, cwd: str, dispatch, model: str = ""):
         self._model = model
         self._lines = None
-        self._discard = 0  # results still owed to requests that timed out
         self._write = threading.Lock()  # stdin: the worker sends prompts, interrupt() comes from the caller's thread
         self._interrupts = 0
         super().__init__(cmd, cwd, dispatch)
@@ -296,7 +303,9 @@ class ClaudeSession(_Backend):
 
     def _exchange(self, prompt: str, timeout: float) -> str:
         proc, lines = self._ensure_proc()
-        msg = {"type": "user", "message": {"role": "user", "content": prompt}}
+        mine = str(uuid.uuid4())
+        started = False  # the CLI has replayed this message: the next result is its reply
+        msg = {"type": "user", "message": {"role": "user", "content": prompt}, "uuid": mine}
         try:
             with self._write:
                 proc.stdin.write(json.dumps(msg) + "\n")
@@ -308,7 +317,6 @@ class ClaudeSession(_Backend):
             try:
                 line = lines.get(timeout=timeout)
             except queue.Empty:
-                self._discard += 1
                 raise SessionError("timeout", "AI timed out.")
             if line is None:
                 self._drop_proc(proc)
@@ -319,10 +327,9 @@ class ClaudeSession(_Backend):
                 continue
             if obj.get("type") == "system" and obj.get("subtype") == "init" and obj.get("model"):
                 remember_model("claude", self._model, obj["model"])
-            if obj.get("type") != "result":
-                continue
-            if self._discard:
-                self._discard -= 1
+            if obj.get("type") == "user" and obj.get("uuid") == mine:
+                started = True
+            if obj.get("type") != "result" or not started:
                 continue
             text = obj.get("result") or obj.get("subtype") or ""
             if obj.get("is_error"):
@@ -333,7 +340,6 @@ class ClaudeSession(_Backend):
         proc = self._proc
         if proc is not None and proc.poll() is None:
             return proc, self._lines
-        self._discard = 0
         try:
             proc = subprocess.Popen(
                 self._cmd, cwd=self._cwd, text=True, bufsize=1,
