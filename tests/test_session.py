@@ -104,3 +104,15 @@ def test_find_cli_checks_install_locations_when_path_is_bare(monkeypatch, tmp_pa
     assert session.find_cli("claude", "auto") == str(fake)
     monkeypatch.setitem(session.CLI_CANDIDATES, "claude", [])
     assert session.find_cli("claude", "") == "claude"
+
+
+def test_interrupt_ends_the_reply_but_keeps_the_conversation(sess):
+    """Cancel in the chat: the running reply is dropped at once and the process (Claude's memory) stays."""
+    fired = []
+    sess.request(1, "SLEEP:5", parse_json_reply, 10, lambda *a: fired.append(a))
+    sess.request(2, "queued", parse_json_reply, 10, lambda *a: fired.append(a))
+    threading.Event().wait(0.5)  # the first is being answered
+    sess.interrupt()
+    after = call(sess, "after-interrupt", timeout=3)  # well before the SLEEP would end
+    assert after["err"] is None and after["result"]["n"] == 2  # same process: the interrupted turn was turn 1
+    assert fired == []  # neither the interrupted nor the queued request calls back

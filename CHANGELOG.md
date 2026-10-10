@@ -4,6 +4,7 @@ What changed in each version, newest first. How the add-on works today is in [do
 
 ## Unreleased
 
+- You can keep sending messages in a chat while it is answering: they queue up and are answered in order, each reply under its own message. A **Cancel** button stops the answer being written and moves on to the next; with Claude the conversation is kept.
 - After making or changing cards, the chat (with Claude) offers to have fresh reviewers check them: subagents that see only the cards, deck prompts and formatting rules check facts against your reference files and the web, and the format against the rules and your deck. The chat then fixes what it agrees with and says what it changed. The reviewers can read and search but change nothing; at most 5 run at once, the rest wait their turn.
 - Notes the AI writes are terser without losing key facts: a topic with subtopics gets a title per subtopic with its points as bullets (numbered for a sequence) and a comparison table of the subtopics, and filler words are cut. The formatting guide now ends with a good and a bad example note.
 - The AI chat can now also read and search files on your computer (read-only), besides searching the web. Changes still only happen through the add-on's own actions.

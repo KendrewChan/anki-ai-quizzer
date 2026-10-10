@@ -19,9 +19,9 @@ MIN_WIDTH = 260  # the dock can't be dragged narrower than this
 
 class Chat:
     def __init__(self, on_send, on_close, hint: str, on_command=None, quick: bool = True, closable: bool = True):
-        self.on_send = on_send  # (selection, text) -> None
+        self.on_send = on_send  # (message id, selection, text) -> None
         self.on_close = on_close
-        self.on_command = on_command  # (command, arg) -> None: "clear", "act:<key>"
+        self.on_command = on_command  # (command, arg) -> None: "clear", "cancel", "act:<key>"
         self.web = AnkiWebView(title="ai study chat")
         self.web.set_bridge_command(self._on_bridge, self)
         self.web.stdHtml(panel_page.panel_html(hint, quick, closable),
@@ -44,12 +44,14 @@ class Chat:
         self.web.setFocus(Qt.FocusReason.OtherFocusReason)
         self.web.eval("document.getElementById('cmd') && document.getElementById('cmd').focus();")
 
-    def reply(self, text: str, err: bool = False, actions=()):
-        """actions: [(label, key)] shown as buttons under the reply; a click sends on_command("act", key)."""
-        self.js(f"aiPanel.reply({json.dumps(rich(text))}, {json.dumps(err)}, {json.dumps(list(actions))});")
+    def reply(self, mid, text: str, err: bool = False, actions=()):
+        """The answer to message `mid` (None: a note not about a message). actions: [(label, key)] shown as buttons
+        under the reply; a click sends on_command("act", key)."""
+        self.js(f"aiPanel.reply({json.dumps(mid)}, {json.dumps(rich(text))}, {json.dumps(err)}, "
+                f"{json.dumps(list(actions))});")
 
-    def status(self, text: str):
-        self.js(f"aiPanel.status({json.dumps(text)});")
+    def status(self, mid, text: str):
+        self.js(f"aiPanel.status({json.dumps(mid)}, {json.dumps(text)});")
 
     def prefill(self, prefix: str):
         self.js(f"aiPanel.prefill({json.dumps(prefix)});")
@@ -67,14 +69,16 @@ class Chat:
             try:
                 self.on_close()
             except Exception as e:
-                self.reply(f"Couldn't close: {type(e).__name__}: {e}", True)
+                self.reply(None, f"Couldn't close: {type(e).__name__}: {e}", True)
         elif command == "send":
+            mid = None
             try:
                 data = json.loads(arg)
-                self.on_send(str(data.get("sel", "")), str(data.get("text", "")).strip())
+                mid = data.get("id")
+                self.on_send(mid, str(data.get("sel", "")), str(data.get("text", "")).strip())
             except Exception as e:  # never leave the page on "Thinking…"
-                self.reply(f"Failed: {type(e).__name__}: {e}", True)
-        elif command in ("clear", "act") and self.on_command:
+                self.reply(mid, f"Failed: {type(e).__name__}: {e}", True)
+        elif command in ("clear", "cancel", "act") and self.on_command:
             self.on_command(command, arg)
 
 
@@ -160,13 +164,13 @@ class ReviewPanel:
     def toggle(self):
         self.close() if self.is_open() else self.open()
 
-    def reply(self, text: str, err: bool = False, actions=()):
+    def reply(self, mid, text: str, err: bool = False, actions=()):
         if self.chat is not None:
-            self.chat.reply(text, err, actions)
+            self.chat.reply(mid, text, err, actions)
 
-    def status(self, text: str):
+    def status(self, mid, text: str):
         if self.chat is not None:
-            self.chat.status(text)
+            self.chat.status(mid, text)
 
     def has_focus(self) -> bool:
         """The keyboard is in the panel (the web view or its internal focus proxy)."""
