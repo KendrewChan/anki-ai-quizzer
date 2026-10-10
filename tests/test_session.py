@@ -10,7 +10,7 @@ from addon.grading import parse_json_reply
 from addon.session import RETRY_PROMPT  # noqa: E402
 from addon.session import ClaudeSession  # noqa: E402
 
-FAKE = [sys.executable, os.path.join(os.path.dirname(__file__), "fake_claude.py")]
+FAKE = [sys.executable, os.path.join(os.path.dirname(__file__), "fake_claude.py"), "--replay-user-messages"]
 
 
 @pytest.fixture
@@ -51,6 +51,15 @@ def test_timeout_then_late_reply_is_discarded(sess):
     assert t["err"].kind == "timeout"
     nxt = call(sess, "after")
     assert nxt["result"]["echo"] == "after"  # not the late SLEEP reply
+
+
+def test_turn_the_cli_starts_by_itself_is_not_the_next_reply(sess):
+    """A background subagent finishing makes the CLI answer once more, unasked: that result must not become the reply
+    to the next message (which then repeated the previous answer, and every later reply was one message behind)."""
+    call(sess, "BACKGROUND")
+    nxt = call(sess, "next")
+    assert nxt["result"]["echo"] == "next"
+    assert call(sess, "and then")["result"]["echo"] == "and then"
 
 
 def test_crash_reports_and_next_request_respawns(sess):
