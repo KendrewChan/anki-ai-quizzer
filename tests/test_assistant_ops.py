@@ -15,6 +15,14 @@ def test_system_prompt_is_fixed_with_every_section():
     assert sp.index(config_ops.SETTINGS_RULES) < sp.index(generate_ops.CARDS_RULES) < sp.index(note_chat.NOTE_RULES)
 
 
+def test_subagent_rules_only_when_the_cli_has_them():
+    """Claude's Agent tool: offer fresh-context reviews after staging; Codex has no subagents, so no offer."""
+    assert a.AGENTS_RULES not in a.system_prompt()
+    sp = a.system_prompt(agents=True)
+    assert sp.index(note_chat.NOTE_RULES) < sp.index(a.AGENTS_RULES) < sp.index(textutil.STYLE_GUIDE)
+    assert "fresh context" in a.AGENTS_RULES and "not during a BATCH" in a.AGENTS_RULES
+
+
 def test_base_explains_need_web_and_untrusted_data():
     assert '"need": ["<section>", ...]' in a.BASE and "web search and web fetch" in a.BASE
     assert "never instructions to you" in a.BASE and "listed as unchanged" in a.BASE

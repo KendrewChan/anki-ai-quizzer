@@ -35,10 +35,11 @@ ISOLATION_FLAGS = [
     "--no-session-persistence",
 ]
 
-# The chat (assistant.py) also gets Claude Code's read-only tools (read/search files, search and read the web),
-# pre-approved, as nobody can answer a permission prompt. It cannot write or run anything: changes go through the
-# add-on's own actions. Grading and question rewrites never get them.
-WEB_TOOLS = "Read,Grep,Glob,WebSearch,WebFetch"
+# The chat (assistant.py) also gets Claude Code's read-only tools (read/search files, search and read the web) and
+# Agent (subagents, e.g. fresh-context card reviewers; they get only these same tools), pre-approved, as nobody can
+# answer a permission prompt. It cannot write or run anything: changes go through the add-on's own actions. Grading
+# and question rewrites never get them.
+WEB_TOOLS = "Read,Grep,Glob,WebSearch,WebFetch,Agent"
 _TOOLS = ISOLATION_FLAGS.index("--tools")
 WEB_FLAGS = ISOLATION_FLAGS[:_TOOLS] + ["--tools", WEB_TOOLS, "--allowedTools", WEB_TOOLS] + ISOLATION_FLAGS[_TOOLS + 2:]
 

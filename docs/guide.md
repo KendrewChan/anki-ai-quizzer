@@ -54,7 +54,7 @@ Lists the notes whose Missed section was last written today, grouped by deck, wi
 
 ## Generate/Update Cards (✨ Generate/Update Cards)
 
-A tab of the AI Window. Optionally pick a **reference** — a file or folder on your **Desktop** (Choose folder… / Choose file…; text files only, e.g. .txt, .md, code). Then tell the chat what you want: "10 cards from these notes into Biology::Ch3", "improve my Chem cards using this file", "make card 3 shorter", "cards on the latest Python release from python.org". Cards made from any chat (the reviewer's too) land here; the reply has a **Review in Generate/Update** button.
+A tab of the AI Window. Optionally pick a **reference** — a file or folder on your **Desktop** (Choose folder… / Choose file…; text files only, e.g. .txt, .md, code). Then tell the chat what you want: "10 cards from these notes into Biology::Ch3", "improve my Chem cards using this file", "make card 3 shorter", "cards on the latest Python release from python.org". Cards made from any chat (the reviewer's too) land here; the reply has a **Review in Generate/Update** button. With Claude, the chat then offers to have fresh reviewers check the new cards: say yes and separate AI reviewers, who see only the cards and your rules, check the facts (against your reference and the web) and the format; the chat fixes what it agrees with and tells you what changed.
 
 - New and updated cards wait in a temporary deck, **AI-GEN**, whose subdecks mirror where they'll go (`AI-GEN::Biology::Ch3`, or `AI-GEN::Physics` for a brand-new deck). Nothing in your real decks changes yet — you can study or edit them there.
 - On an UPDATE card, **Show Original** shows the card as it is now, fully expanded (click **Show Update** to go back).
@@ -67,7 +67,7 @@ Open **🤖 AI Window → ⚙ Settings**: it checks your AI CLI on open. If some
 
 ## Notes
 
-- Studying uses your own plan's usage (Claude or ChatGPT). Grading keeps one `claude` process open per review session; Codex starts one per message. Each chat keeps its own (read-only file tools, web search and web fetch are its only tools).
+- Studying uses your own plan's usage (Claude or ChatGPT). Grading keeps one `claude` process open per review session; Codex starts one per message. Each chat keeps its own (read-only file tools, web search and web fetch, and with Claude read-only reviewer subagents, are its only tools).
 - Built and used on macOS. Windows and Linux are covered by automated tests but not yet tried in Anki itself. If the CLI isn't found, tell the chat its path ("claude path is /path/to/claude", or the same for codex).
 
 ## Development

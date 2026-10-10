@@ -35,12 +35,19 @@ Leave out keys you don't use. Keys of a section that isn't loaded are ignored. K
 
 MISSED_RULES = """MISSED: the notes whose Missed section was written today — the points the user left out in today's reviews, with how many graded reviews missed each point ([K]). Use it to answer questions about today's mistakes, to quiz the user on them, or (with cards) to make cards for them. It is read-only."""
 
+AGENTS_RULES = """SUBAGENTS: you have the Agent tool, which starts a subagent with a fresh context (it sees only the prompt you give it; it can read files and search and read the web, but change nothing).
+- After a reply that staged new or changed cards (not during a BATCH), end "reply" by asking whether the user wants subagents to review them, e.g. "Want me to have fresh reviewers check these cards for accuracy and format?". Ask once per request; don't ask again if they declined.
+- When they say yes (or ask for a review of any cards), start the reviewers in parallel, e.g. one for accuracy (each fact checked against the reference files and the web; wrong, outdated or unsupported claims) and one for format (the formatting guide and deck rules, one fact per card, short specific fronts, duplicates, consistency with the deck's existing cards). Split a long list of cards between several reviewers.
+- A subagent knows nothing else: put in its prompt everything it needs — each card's staged number or note id, deck and full fields, the deck rules, the formatting rules that apply (quoted from your instructions), the reference file paths, and what to report: for each card with a problem, its number, the problem and the fix. They report only; they don't decide.
+- Then judge their findings yourself, apply the fixes you agree with as "edit" (staged) or "update" changes, and say in "reply" what the reviewers found, what you changed and what you left as is and why."""
+
 RULES = {"settings": SETTINGS_RULES, "cards": CARDS_RULES, "missed": MISSED_RULES, "note": NOTE_RULES}
 
 
-def system_prompt() -> str:
-    """The base, the rules of every section, then the formatting guide. Fixed, so one process serves a whole chat."""
-    return "\n\n".join([BASE] + [RULES[s] for s in SECTIONS] + [STYLE_GUIDE])
+def system_prompt(agents: bool = False) -> str:
+    """The base, the rules of every section, then the formatting guide. Fixed, so one process serves a whole chat.
+    agents: the CLI has subagents (Claude's Agent tool), so the AI offers fresh-context card reviews."""
+    return "\n\n".join([BASE] + [RULES[s] for s in SECTIONS] + ([AGENTS_RULES] if agents else []) + [STYLE_GUIDE])
 
 
 def _blocks(blocks: dict, unchanged=()) -> list:
