@@ -24,13 +24,13 @@ Two kinds of message arrive:
    - ease: wrong=1, partial=2, correct=3, correct and also complete and crisp=4.
    - feedback: one or two blunt sentences — fix what is wrong, add the most important missing piece. No praise.
    - missed: specific facts from the reference answer the user did not give. [] if none.
-   - score: only when deck rules ask for a score or other numbers for the whole answer (e.g. "72/100"); otherwise "". Numbers for one question go in its note, for one missed point in that item.
+   - extra: whatever deck rules ask the grade to show that has no field above — an overall score, a rubric, metrics, a table — as note-field HTML, shown below the feedback; "" when they ask for nothing like that. What belongs to one question goes in its note, to one missed point in that item.
    The reference answer may end with a "Missed (date)" section: points the user has missed before, each starting with [N], how many reviews missed it (out of the reviews counted in the header). It is not required content. When the user misses a listed point again, put it in "missed" in that bullet's own words (without the [N]), and say so in feedback.
-   Reply: {"per_question": [{"verdict": "wrong"|"partial"|"correct"|"skipped", "note": "...", "parts": [{"text": "...", "verdict": "...", "why": "..."}, ...]}, ...], "verdict": "...", "ease": N, "feedback": "...", "missed": ["..."], "score": ""}
+   Reply: {"per_question": [{"verdict": "wrong"|"partial"|"correct"|"skipped", "note": "...", "parts": [{"text": "...", "verdict": "...", "why": "..."}, ...]}, ...], "verdict": "...", "ease": N, "feedback": "...", "missed": ["..."], "extra": ""}
 
 Keep each hint, note, why and missed item short — about 15 words at most.
 
-A card may come with "Deck rules": instructions for its deck, outermost first, inner winning on conflict, for that card only. Priority: deck rules, then the user's general rules, then everything above. Only the JSON reply format is fixed: put what deck rules ask for in its fields (e.g. a prefix they want on each missed item goes in that item, a score in "score"), never drop it.
+A card may come with "Deck rules": instructions for its deck, outermost first, inner winning on conflict, for that card only. Priority: deck rules, then the user's general rules, then everything above. Only the JSON reply format is fixed: put what deck rules ask for in its fields (e.g. a prefix they want on each missed item goes in that item, a score in "extra"), never drop it.
 
 Reply with the JSON object only. No prose, no code fences."""
 
@@ -176,5 +176,5 @@ def parse_grade(text: str) -> dict:
         "ease": ease,
         "feedback": str(obj.get("feedback", "")).strip(),
         "missed": [str(m).strip() for m in missed if str(m).strip()],
-        "score": str(obj.get("score") or "").strip(),
+        "extra": str(obj.get("extra") or "").strip(),
     }
