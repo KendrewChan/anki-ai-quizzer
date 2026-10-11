@@ -21,7 +21,7 @@ def test_answer_only_keeps_text_after_answer_hr():
 
 def test_parse_grade_from_fenced_reply():
     r = grading.parse_grade('```json\n{"verdict":"Partial","ease":"2","feedback":" f ","missed":["a",""," b "]}\n```')
-    assert r == {"per_question": [], "verdict": "partial", "ease": 2, "feedback": "f", "missed": ["a", "b"]}
+    assert r == {"per_question": [], "verdict": "partial", "ease": 2, "feedback": "f", "missed": ["a", "b"], "score": ""}
 
 
 def test_parse_grade_per_question_normalised():
@@ -369,3 +369,14 @@ def test_ask_prompt_sends_past_misses_only_when_deck_rules_ask():
     assert "consistent hashing" not in grading.ask_prompt("Design X", [("D", "seven sections")], missed=past)
     assert "consistent hashing" not in grading.ask_prompt("Design X", missed=past)
     assert "Missed in earlier" not in grading.ask_prompt("Design X", [("D", "hint at what I missed")])
+
+
+def test_parse_grade_score_optional():
+    assert grading.parse_grade('{"verdict":"wrong","score":" 15/100 "}')["score"] == "15/100"
+    assert grading.parse_grade('{"verdict":"wrong"}')["score"] == ""
+
+
+def test_verdict_html_shows_score():
+    v = {"verdict": "wrong", "feedback": "", "missed": [], "score": "15/100"}
+    assert "15/100" in ui.verdict_html(v, [], ["x"])
+    assert "class=\"ai-score\"" not in ui.verdict_html(dict(v, score=""), [], ["x"])

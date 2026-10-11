@@ -35,7 +35,7 @@ def answer_side_context(fields: dict, questions: list, answers: list, verdict=No
     if verdict:
         asked = questions or ["(the card's own question)"]
         pairs = "\n".join(f"Q: {q}\nUser: {a.strip() or '(blank)'}" for q, a in zip(asked, pad(answers, len(asked))))
-        review = f"\n\nReview:\n{pairs}\nGrade: {verdict.get('verdict')} — {verdict.get('feedback', '')}"
+        review = f"\n\nReview:\n{pairs}\nGrade: {verdict.get('verdict')}{' (' + verdict['score'] + ')' if verdict.get('score') else ''} — {verdict.get('feedback', '')}"
     return f"ANSWER SIDE\n\nNOTE FIELDS\n\n{note}{deck_rules_block(deck_rules)}{review}"
 
 
