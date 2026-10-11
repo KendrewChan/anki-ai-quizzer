@@ -4,6 +4,7 @@ What changed in each version, newest first. How the add-on works today is in [do
 
 ## Unreleased
 
+- Chat answers that cover several topics (e.g. your misses per card) now give each topic a bold title with one point per bullet under it, instead of cramming all of a topic's points into one long bullet.
 - Fixed: a deck prompt asking the grade for something extra (e.g. "give a score out of 100") was often ignored, because the grade had no place for it. Now anything a deck prompt asks the grade to show (a score, a rubric, metrics, a table) appears below the feedback, and prefixes it asks for on Missed points are kept. Ask the chat for it ("grade this deck out of 100") and it goes into the deck prompt; no add-on update needed.
 - Fixed: the chat (with Claude) sometimes answered a new message with its previous answer, and stayed one reply behind after that. It happened after a subagent ran in the background: when it finished, Claude wrote one more reply by itself, which was taken as the answer to your next message.
 - You can keep sending messages in a chat while it is answering: they queue up and are answered in order, each reply under its own message. A **Cancel** button stops the answer being written and moves on to the next; with Claude the conversation is kept.

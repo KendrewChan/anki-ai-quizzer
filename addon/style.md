@@ -8,6 +8,22 @@ Plain, clear text first. Every format has one meaning; use it only when that mea
 
 ## Chat replies ("reply")
 Short text with one exception, because it is a conversation answer: when you make 2+ separate points, put each on its own line ("\n" in the JSON string) starting with "- ", or "1. ", "2. " when the order matters or the user asks for numbered points. A lead-in sentence may come first. A single point stays a sentence or two, with no list. One **bold** key term per point at most; no other Markdown.
+- One point per bullet: never run several points into one bullet with sentences or semicolons.
+- An answer covering 2+ topics with their own points (per card, per deck, per question): a blank line, then each topic's title alone on its line in **bold**, then its points as "- " bullets under it, then a blank line before the next topic.
+- Cut words, never facts, as in note fields: fragments, arrows (→) and "X: Y" are fine.
+
+Good:
+```
+Top misses for 2 of 12 cards:
+
+**Photosynthesis**
+- O₂ comes from water, not CO₂
+- Calvin cycle: in the stroma, needs ATP + NADPH
+
+**Cell respiration**
+- Most ATP from the electron transport chain
+```
+Bad: one bullet per topic holding all its points as a run of sentences ("- Photosynthesis: O₂ comes from… The Calvin cycle runs in… It needs…").
 
 ## Note fields (cards you write or edit)
 Anki HTML only, no Markdown:
