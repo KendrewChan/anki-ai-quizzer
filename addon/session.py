@@ -63,7 +63,7 @@ CODEX_ISOLATION_FLAGS = [
 CODEX_WEB_FLAGS = [a if a != 'web_search="disabled"' else 'web_search="live"' for a in CODEX_ISOLATION_FLAGS]
 
 PROVIDERS = ("claude", "codex")  # the first one is the default
-CLAUDE_ALIASES = ("haiku", "sonnet", "opus", "fable")  # Claude Code's own model names
+CLAUDE_ALIASES = ("haiku", "sonnet", "opus", "fable")  # Claude Code's own model names: it has no command listing them
 LIMIT = re.compile(r"usage limit|rate limit|limit reached|hit your limit", re.I)
 
 
@@ -190,6 +190,7 @@ class _Backend:
         self._proc = None
         self._stderr = deque(maxlen=20)
         self._gen = 0  # bumped by stop(); stale jobs and callbacks are dropped
+        self._job_gen = 0  # the generation of the job the worker is running
         self._worker = threading.Thread(target=self._run, daemon=True)
         self._worker.start()
 
@@ -226,6 +227,7 @@ class _Backend:
             gen, card_id, prompt, parse, timeout, callback = job
             if gen != self._gen:
                 continue
+            self._job_gen = gen
             result, error = None, None
             try:
                 try:
@@ -237,6 +239,8 @@ class _Backend:
                         raise SessionError("bad_reply", str(e))
             except SessionError as e:
                 error = e
+            except Exception as e:  # a bug in parse or bookkeeping must not kill the worker and hang every request
+                error = SessionError("error", f"{type(e).__name__}: {e}")
             self._deliver(gen, callback, card_id, result, error)
 
     def _deliver(self, gen, callback, card_id, result, error):
@@ -257,6 +261,17 @@ class _Backend:
         proc, self._proc = self._proc, None
         if proc is not None:
             _terminate(proc)
+
+    def _cancelled(self) -> bool:
+        """stop()/interrupt() ran since the worker took the current job."""
+        return self._job_gen != self._gen
+
+    def _started(self, proc):
+        """Register a just-started process; stop()/close() may have run while it started and found nothing to kill."""
+        self._proc = proc
+        if self._cancelled():
+            self._kill()
+            raise SessionError("crashed", "stopped.")
 
     def _exchange(self, prompt: str, timeout: float) -> str:
         raise NotImplementedError
@@ -308,6 +323,8 @@ class ClaudeSession(_Backend):
         msg = {"type": "user", "message": {"role": "user", "content": prompt}, "uuid": mine}
         try:
             with self._write:
+                if self._cancelled():  # an interrupt sent before this write would miss it: don't start the turn
+                    raise SessionError("crashed", "stopped.")
                 proc.stdin.write(json.dumps(msg) + "\n")
                 proc.stdin.flush()
         except (BrokenPipeError, OSError, ValueError):
@@ -350,7 +367,8 @@ class ClaudeSession(_Backend):
         lines = queue.Queue()
         threading.Thread(target=self._read_stdout, args=(proc, lines), daemon=True).start()
         threading.Thread(target=self._read_stderr, args=(proc,), daemon=True).start()
-        self._proc, self._lines = proc, lines
+        self._lines = lines
+        self._started(proc)
         return proc, lines
 
     @staticmethod
@@ -384,7 +402,7 @@ class CodexBackend(_Backend):
             )
         except OSError as e:
             raise SessionError("unavailable", f"cannot start codex ({self._cmd[0]}): {e}")
-        self._proc = proc
+        self._started(proc)
         try:
             out, err = proc.communicate(f"{self._system_prompt}\n\n---\n\n{prompt}", timeout=timeout)
         except subprocess.TimeoutExpired:

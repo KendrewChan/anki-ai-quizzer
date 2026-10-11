@@ -283,7 +283,7 @@ class ConfigPage(Tab):
 
             def done():
                 if msg:
-                    cmd = " ".join(auth_command(provider, provider, action))
+                    cmd = " ".join(auth_command(provider, provider, action))  # bare CLI name: what to type in a terminal
                     self.say(f"{action} failed: {msg} — try `{cmd}` in a terminal.", err=True)
                 self._refresh_auth()
 

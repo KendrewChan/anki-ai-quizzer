@@ -4,11 +4,14 @@ Every action does a few batched collection ops (not one per card): Anki keeps on
 custom undo entry that groups an action must still be in the queue when it is merged.
 """
 
+import hashlib
+
 from .generate_ops import TEMP_DECK, is_temp
 
 TAG = "ai_generate"
 OF = "ai_generate_of_"  # + original note id, on a staged copy that updates that note
 OK = "ai_generate_ok"  # staged card the user approved; Submit ports only these
+BASE = "ai_generate_base_"  # + field index + "_" + digest of the original's field when the copy was staged
 CLOZE = 1  # notetype["type"] of cloze note types
 
 
@@ -21,6 +24,21 @@ def _note_dict(col, note) -> dict:
     card = note.cards()[0]
     return {"id": note.id, "type": note.note_type()["name"], "deck": col.decks.name(card.odid or card.did),
             "fields": dict(note.items())}
+
+
+def _digest(value: str) -> str:
+    return hashlib.sha1(value.encode("utf-8")).hexdigest()[:12]
+
+
+def _bases(note) -> dict:
+    """Field index -> digest of the original's value at staging time (empty for copies staged before this existed)."""
+    out = {}
+    for t in note.tags:
+        if t.startswith(BASE):
+            i, _, h = t[len(BASE):].partition("_")
+            if i.isdigit():
+                out[int(i)] = h
+    return out
 
 
 def _original_of(note):
@@ -122,7 +140,8 @@ def apply_ops(col, ops) -> tuple:
                 copy = col.new_note(src.note_type())
                 for k, v in src.items():
                     copy[k] = v
-                copy.tags = list(src.tags) + [TAG, f"{OF}{src.id}"]
+                copy.tags = (list(src.tags) + [TAG, f"{OF}{src.id}"]
+                             + [f"{BASE}{i}_{_digest(v)}" for i, v in enumerate(src.fields)])
                 new_copies[orig["id"]] = copy
                 adds.append(AddNoteRequest(note=copy, deck_id=did(orig["deck"])))
             for k, v in fields.items():
@@ -191,15 +210,18 @@ def submit(col) -> tuple:
             except NotFoundError:  # original deleted meanwhile: keep the copy as a new card
                 pass
         if orig is not None:
-            for k, v in note.items():
-                if k in orig:
+            # Only fields changed since staging: the original may have changed meanwhile (a review's Missed section,
+            # a manual edit), and an untouched field of the copy still holds its old value.
+            bases = _bases(note)
+            for i, (k, v) in enumerate(note.items()):
+                if k in orig and not (i in bases and _digest(v) == bases[i]):
                     orig[k] = v
             notes.append(orig)
             drop.append(note.id)
             counts["updated"] += 1
         else:
             moves.setdefault(s["deck"] or "Default", []).extend(note.card_ids())
-            note.tags = [t for t in note.tags if t not in (TAG, OK) and not t.startswith(OF)]
+            note.tags = [t for t in note.tags if t not in (TAG, OK) and not t.startswith((OF, BASE))]
             notes.append(note)
             counts["added"] += 1
     for deck, cids in moves.items():

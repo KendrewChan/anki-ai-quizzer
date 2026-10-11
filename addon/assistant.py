@@ -11,7 +11,7 @@ from aqt import mw
 
 from . import assistant_ops, generate_col, generate_ops, health, missed_today, note_chat
 from .config_ops import settings_context
-from .generate_page import _Result
+from .generate_page import OpResult
 from .session import make_backend, model_for, provider_of, resolved_model
 from .side_panel import ReviewPanel
 from .tab_page import deck_ids, load_config
@@ -55,7 +55,6 @@ class _Turn:
         self.batch = None  # (index, chunks) while a per-card request goes through the cards a few at a time
         self.tally = None  # counts, rejected changes and last reply over the batches
         self.owns_cards = False  # holds the Generate/Update tab's busy flag
-        self.forget = False  # Clear was pressed meanwhile: keep it out of the history
 
 
 class Conversation:
@@ -144,7 +143,6 @@ class Conversation:
         """Drop the message being answered (its reply is ignored) and any batch run."""
         t, self.turn = self.turn, None
         if t is not None:
-            t.forget = True
             if t.owns_cards:
                 self.host.generate.set_status(False)
         self._stop_batch()
@@ -261,6 +259,12 @@ class Conversation:
             self.host.generate.set_status(True, text, batching=bool(t.batch))
 
     def _on_reply(self, t: _Turn, result, err):
+        try:
+            self._handle_reply(t, result, err)
+        except Exception as e:  # runs in a Qt callback: an error would vanish and leave the chat on "Thinking…"
+            self._finish(t, f"Failed: {type(e).__name__}: {e}", err=True)
+
+    def _handle_reply(self, t: _Turn, result, err):
         if t is not self.turn:
             return  # cancelled meanwhile
         if t.batch:
@@ -297,6 +301,9 @@ class Conversation:
             self._ask(t)
             return
         rejected = []
+        if result["cards"] and "cards" not in t.ctx.sections:  # made without the deck list, rules or staged cards
+            rejected.append("✗ card changes ignored: cards weren't loaded")
+            result = dict(result, cards=[])
         if result["read_decks"] and "cards" not in t.ctx.sections and more:  # reading a deck needs no "need"
             t.ctx.sections.add("cards")
             self.loaded.add("cards")
@@ -309,13 +316,10 @@ class Conversation:
             else:
                 rejected.append("✗ settings changes ignored: settings weren't loaded")
         if result["cards"]:
-            if "cards" in t.ctx.sections:
-                gen = self.host.generate
-                existing = {n["id"]: n for notes in gen.loaded.values() for n in notes}
-                ops, bad = generate_ops.plan_changes(result["cards"], list(deck_ids()), existing, t.staged)
-                rejected += bad
-            else:
-                rejected.append("✗ card changes ignored: cards weren't loaded")
+            gen = self.host.generate
+            existing = {n["id"]: n for notes in gen.loaded.values() for n in notes}
+            ops, bad = generate_ops.plan_changes(result["cards"], list(deck_ids()), existing, t.staged)
+            rejected += bad
         fields = result["fields"]
         if fields and not (t.ctx.apply_fields and "note" in t.ctx.sections):
             rejected.append("✗ field changes ignored: no note can be changed here")
@@ -335,7 +339,7 @@ class Conversation:
                 self._finish(t, "Couldn't stage the cards — see the Generate/Update tab.", err=True)
 
         if ops:
-            self.host.generate.run_op(lambda col: _Result(generate_col.apply_ops(col, ops)), after_cards, failed)
+            self.host.generate.run_op(lambda col: OpResult(generate_col.apply_ops(col, ops)), after_cards, failed)
         else:
             after_cards()
 
@@ -343,24 +347,29 @@ class Conversation:
         """Load the decks the AI asked to read. True when the message goes back to it with them (False: answer as is)."""
         gen = self.host.generate
         decks = list(deck_ids())
-        new_reads = []
+        names, new_reads = [], []
         for name in result["read_decks"]:
             try:
                 name = generate_ops.resolve_read(name, decks)
             except ValueError as e:
                 rejected.append(f"✗ {e}")
                 continue
+            names.append(name)
             if name not in gen.loaded:
                 gen.loaded[name] = generate_col.read_deck(mw.col, name)
                 new_reads.append(name)
-        if not new_reads or result["cards"] or t.rounds >= assistant_ops.MAX_ROUNDS:
+        if not names or result["cards"] or t.rounds >= assistant_ops.MAX_ROUNDS:
             return False
-        chunks = generate_ops.chunk_notes(gen.loaded)
+        # Only the decks this request names: gen.loaded also keeps decks read for earlier messages.
+        chunks = generate_ops.chunk_notes({n: gen.loaded[n] for n in dict.fromkeys(names)})
         if result["per_card"] and len(chunks) > 1:  # the same request, a few cards at a time
             t.batch, t.tally = (0, chunks), {"counts": {}, "rejected": [], "reply": ""}
             self._progress(t, self._batch_status(t))
-        else:
+        elif new_reads or not result["reply"]:  # read, or asked again for decks it already has: resend them
+            self.sent.pop("cards", None)
             self._progress(t, "Reading your decks…")
+        else:
+            return False
         self._ask(t)
         return True
 
@@ -420,7 +429,7 @@ class Conversation:
         self.turn = None
         if t.owns_cards:
             self.host.generate.set_status(False)
-        if not err and not t.forget:
+        if not err:
             self.history.append((t.text, remember or text))
         keys = []
         for label, fn in actions:

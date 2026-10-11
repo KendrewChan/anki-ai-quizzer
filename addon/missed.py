@@ -21,7 +21,7 @@ RED_FROM = 3  # a point missed this many times or more is marked red
 _REVIEWS = re.compile(r"<i>\s*(\d+)\s+reviews?\s*</i>", re.I)
 
 
-def _count_html(n: int) -> str:
+def count_html(n: int) -> str:
     return f'<b style="color:#d33">[{n}]</b>' if n >= RED_FROM else f"<b>[{n}]</b>"
 
 
@@ -30,7 +30,7 @@ def missed_html(items: list, date: str, reviews: int = 1) -> str:
     head = f"<hr><b>Missed ({date})</b> <i>{reviews} review{'s' if reviews != 1 else ''}</i>"
     if not items:
         return f"{head}: nothing"
-    return head + "<ul>" + "".join(f"<li>{_count_html(n)} {h}</li>" for h, n in items) + "</ul>"
+    return head + "<ul>" + "".join(f"<li>{count_html(n)} {h}</li>" for h, n in items) + "</ul>"
 
 
 def parse_missed(field_html: str) -> tuple:
@@ -70,8 +70,9 @@ def merge_missed(items: list, bullets: list) -> list:
         else:
             items[k] = (items[k][0], items[k][1] + 1)
             seen.add(k)
-    items = sorted(items, key=lambda it: -it[1])  # stable: ties keep the older point first
-    return items[:MAX_MISSED]
+    # Keep the most-missed; among equals the newest wins, so a fresh miss is never lost to a full list.
+    kept = sorted(range(len(items)), key=lambda i: (-items[i][1], -i))[:MAX_MISSED]
+    return [items[i] for i in sorted(kept, key=lambda i: (-items[i][1], i))]  # shown most-missed first, older first
 
 
 def replace_missed(field_html: str, bullets: list, date: str) -> str:

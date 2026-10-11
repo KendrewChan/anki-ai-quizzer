@@ -66,7 +66,7 @@ def deck_rules_block(deck_rules: list) -> str:
 
 def wants_missed(deck_rules: list) -> bool:
     """A deck rule mentions misses (e.g. "hint at the sections I missed"): the ask request gets the card's Missed points."""
-    return any("miss" in str(p).lower() for _name, p in deck_rules or ())
+    return any(re.search(r"\bmiss(es|ed)?\b", str(p), re.I) for _name, p in deck_rules or ())
 
 
 def ask_prompt(question: str, deck_rules: list = (), sharp: bool = True, missed=()) -> str:
@@ -134,7 +134,7 @@ def parse_questions(text: str) -> dict:
         hs = [str(x).strip() for x in h] if isinstance(h, list) else [str(h).strip() if h else ""]
         labels = [f"{i}.{k}" if many else f"{k}." for k in range(1, len(parts) + 1)]
         part_hints = (hs + [""] * len(parts))[:len(parts)]
-        items.append({"num": f"{i}." if many else "", "text": stem, "hint": "" if parts else hs[0],
+        items.append({"num": f"{i}." if many else "", "text": stem, "hint": "" if parts or not hs else hs[0],
                       "parts": [{"label": lb, "text": p, "hint": ph} for lb, p, ph in zip(labels, parts, part_hints)]})
         questions.append("\n".join([stem] + [f"{lb} {p}" for lb, p in zip(labels, parts)]).strip())
     return {"questions": questions, "items": items, "show_original": obj.get("show_original") is True}

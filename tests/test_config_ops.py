@@ -248,3 +248,16 @@ def test_deck_prefix_is_explained_to_the_ai():
     assert prefix == 'Deck prompt for "Biology::Ch3": '
     assert 'Deck prompt for "<deck>":' in config_ops.SETTINGS_RULES
     assert "Never drop or weaken anything the user asked for" in config_ops.SETTINGS_RULES
+
+
+def test_several_removals_refer_to_the_list_as_shown():
+    cfg = dict(BASE, custom=["a", "b", "c", "d"])
+    new, log, _, _ = apply([{"remove_custom": 2}, {"remove_custom": 3}], cfg=cfg)
+    assert new["custom"] == ["a", "d"]
+    new, log, _, _ = apply([{"remove_custom": 2}, {"remove_custom": 2}], cfg=cfg)
+    assert new["custom"] == ["a", "c", "d"] and log[1].startswith("✗")
+
+
+def test_malformed_changes_are_rejected_not_raised():
+    new, log, _, _ = apply([{"set": ["x"]}, "junk"])
+    assert all(line.startswith("✗") for line in log) and len(log) == 2

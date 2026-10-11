@@ -7,7 +7,7 @@ import zipfile
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC = os.path.join(ROOT, "addon")
 OUT = os.path.join(ROOT, "dist", "anki_ai.ankiaddon")
-SKIP_FILES = {"meta.json"}
+SKIP_FILES = {"meta.json", ".DS_Store", "Thumbs.db"}
 SKIP_DIRS = {"__pycache__", "user_files"}  # user_files: what this machine learned; Anki keeps it on update
 
 os.makedirs(os.path.dirname(OUT), exist_ok=True)

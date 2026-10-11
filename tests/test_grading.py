@@ -233,7 +233,8 @@ def test_missed_keeps_only_the_most_missed_points():
     items = [(f"alpha{i} beta{i} gamma{i}", 1) for i in range(missed.MAX_MISSED)] + [("old favourite", 4)]
     out = missed.merge_missed(items, ["unrelated brand new gap"])
     assert len(out) == missed.MAX_MISSED and out[0] == ("old favourite", 4)
-    assert ("unrelated brand new gap", 1) not in out  # newest, but ties keep the older points
+    assert out[-1] == ("unrelated brand new gap", 1)  # a fresh miss wins the tie
+    assert ("alpha0 beta0 gamma0", 1) not in out  # the oldest least-missed point is dropped
 
 
 def test_answer_side_context_has_fields_and_review():
@@ -380,3 +381,12 @@ def test_verdict_html_shows_extra_safely():
     v = {"verdict": "wrong", "feedback": "", "missed": [], "extra": '<table><tr><td>15/100</td></tr></table><script>x()</script>'}
     out = ui.verdict_html(v, [], ["x"])
     assert "<td>15/100</td>" in out and "<script>x()" not in out
+
+
+def test_wants_missed_matches_whole_words():
+    assert grading.wants_missed([("D", "hint at what I missed")])
+    assert not grading.wants_missed([("D", "Explain the mission of each service")])
+
+
+def test_parse_questions_tolerates_empty_hint_list():
+    assert grading.parse_questions('{"questions":["Q"],"hints":[[]]}')["items"][0]["hint"] == ""

@@ -244,8 +244,11 @@ def apply_changes(cfg: dict, changes: list, history: list, is_executable=None, d
     before = _normalize(cfg)
     new = _copy(before)
     log, auth = [], []
+    shown = list(before.get("custom") or [])  # remove_custom numbers refer to the list the AI saw
     for ch in changes:
         try:
+            if not isinstance(ch, dict):
+                raise ValueError(f"unknown change {json.dumps(ch)}")
             if ch.get("undo"):
                 if not history:
                     raise ValueError("nothing to undo")
@@ -253,6 +256,8 @@ def apply_changes(cfg: dict, changes: list, history: list, is_executable=None, d
                 before = _copy(new)  # an undo is not itself pushed
                 log.append("✓ undid the previous change")
             elif "set" in ch:
+                if not isinstance(ch["set"] or {}, dict):
+                    raise ValueError('"set" needs an object of setting: value')
                 items = sorted((ch["set"] or {}).items(), key=lambda kv: kv[0] != "provider")
                 for key, value in items:
                     provider = provider_of(new)
@@ -282,9 +287,10 @@ def apply_changes(cfg: dict, changes: list, history: list, is_executable=None, d
                     i = int(ch["remove_custom"])
                 except (TypeError, ValueError):
                     raise ValueError("remove_custom needs a rule number")
-                if not 1 <= i <= len(rules):
+                if not 1 <= i <= len(shown) or shown[i - 1] not in rules:
                     raise ValueError(f"there is no custom rule {i}")
-                removed = rules.pop(i - 1)
+                removed = shown[i - 1]
+                rules.remove(removed)
                 new["custom"] = rules
                 log.append(f'✓ removed custom rule {i}: "{removed}"')
             elif "set_deck_prompt" in ch:
