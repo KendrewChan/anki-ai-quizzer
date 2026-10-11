@@ -125,3 +125,25 @@ def test_interrupt_ends_the_reply_but_keeps_the_conversation(sess):
     after = call(sess, "after-interrupt", timeout=3)  # well before the SLEEP would end
     assert after["err"] is None and after["result"]["n"] == 2  # same process: the interrupted turn was turn 1
     assert fired == []  # neither the interrupted nor the queued request calls back
+
+
+def test_unexpected_parse_error_is_reported_and_worker_survives(sess):
+    done = threading.Event()
+    out = {}
+
+    def boom(_text):
+        raise KeyError("x")
+
+    sess.request(1, "first", boom, 5, lambda cid, r, e: (out.update(err=e), done.set()))
+    assert done.wait(10), "callback never fired"
+    assert out["err"].kind == "error" and "KeyError" in out["err"].message
+    assert call(sess, "second")["err"] is None  # the worker is still alive
+
+
+def test_close_while_starting_leaves_no_process(tmp_path):
+    s = ClaudeSession(FAKE, str(tmp_path), lambda fn: fn())
+    s._job_gen = s._gen - 1  # as if stop() ran after the worker took its job
+    with pytest.raises(Exception):
+        s._ensure_proc()
+    assert s._proc is None
+    s.close()

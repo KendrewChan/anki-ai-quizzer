@@ -119,3 +119,17 @@ def test_big_batch_is_one_undo_step(col):
     assert counts == {"updated": 0, "added": 60} and gc.staged(col) == []
     col.undo()  # the whole Submit is one step: everything is back in AI-GEN, still approved
     assert len(gc.staged(col)) == 60 and all(s["ok"] for s in gc.staged(col))
+
+
+def test_submit_writes_only_fields_changed_since_staging(col):
+    """A review between staging and Submit appends a Missed section to Back: an update of Front must keep it."""
+    orig = gc.read_deck(col, "Biology")[0]
+    stage(col, [{"update": {"note_id": orig["id"], "fields": {"Front": "What makes ATP? (organelle)"}}}])
+    note = col.get_note(orig["id"])
+    note["Back"] += "<hr><b>Missed (D)</b>"
+    col.update_note(note)
+    gc.approve(col)
+    _, counts = gc.submit(col)
+    note = col.get_note(orig["id"])
+    assert counts["updated"] == 1 and note["Front"] == "What makes ATP? (organelle)"
+    assert note["Back"] == "Mitochondria<hr><b>Missed (D)</b>" and not any(t.startswith(gc.BASE) for t in note.tags)

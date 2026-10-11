@@ -89,7 +89,7 @@ def _ids(text: str) -> list:
     return [int(x) for x in text.split(",") if x.strip().isdigit()]
 
 
-class _Result:
+class OpResult:
     """CollectionOp wants an object with .changes; carry the counts along."""
 
     def __init__(self, pair):
@@ -153,12 +153,12 @@ class GeneratePage(Tab):
         elif command in ("approve", "unapprove"):
             ids = _ids(arg) if arg else None  # no ids = all staged cards
             ok = command == "approve"
-            self.run_op(lambda col: _Result(generate_col.approve(col, ids, ok=ok)), lambda _n: self._update())
+            self.run_op(lambda col: OpResult(generate_col.approve(col, ids, ok=ok)), lambda _n: self._update())
         elif command == "submit":
-            self.run_op(lambda col: _Result(generate_col.submit(col)), self._submitted)
+            self.run_op(lambda col: OpResult(generate_col.submit(col)), self._submitted)
         elif command == "discard":
             ids = _ids(arg) if arg else None
-            self.run_op(lambda col: _Result(generate_col.discard(col, ids)),
+            self.run_op(lambda col: OpResult(generate_col.discard(col, ids)),
                          lambda n: self.say(f"Discarded {n} staged card{'s' if n != 1 else ''}. "
                                             "Edit → Undo brings them back."))
 

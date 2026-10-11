@@ -145,7 +145,7 @@ class Fixer:
         _background(lambda: health.update(provider, path), done)
 
     def rollback(self, provider: str, version: str):
-        _p, path = self.page.provider()
+        path = find_cli(provider, self.page.cfg().get(f"{provider}_path", ""))  # the CLI diagnosed, even if switched since
         label = PROVIDER_LABELS[provider]
         self.page.say(f"Switching {label} back to {version}…")
 

@@ -4,6 +4,13 @@ What changed in each version, newest first. How the add-on works today is in [do
 
 ## Unreleased
 
+- Fixed: Submit on the Generate/Update tab overwrote a whole note, so a card reviewed after its update was staged lost its new Missed section (or any edit made meanwhile). Only the fields changed by the update are written now.
+- Fixed: once a card's Missed list was full, a point missed for the first time was never saved. Now the oldest of the least-missed points makes room.
+- Fixed: an unexpected reply could leave the reviewer or chat stuck on "Thinking…" for the rest of the session; it now shows an error and the next request works. Cancel no longer lets a message that hadn't started run anyway.
+- Fixed: the chat could recolour or change cards of a deck read for an earlier message when asked to change "every card" of another deck; batches now cover only the decks named in the request. Card changes from a chat that hadn't loaded the cards are refused.
+- Fixed: removing several custom rules in one message removed the wrong ones.
+- Fixed: LaTeX like `\uparrow` in an AI reply no longer makes the reply fail, and a deck prompt mentioning a "mission" no longer sends the card's past misses.
+- HTML the AI writes into the verdict or the Generate list is now filtered more strictly: only formatting tags and safe links survive.
 - Chat answers that cover several topics (e.g. your misses per card) now give each topic a bold title with one point per bullet under it, instead of cramming all of a topic's points into one long bullet.
 - Fixed: a deck prompt asking the grade for something extra (e.g. "give a score out of 100") was often ignored, because the grade had no place for it. Now anything a deck prompt asks the grade to show (a score, a rubric, metrics, a table) appears below the feedback, and prefixes it asks for on Missed points are kept. Ask the chat for it ("grade this deck out of 100") and it goes into the deck prompt; no add-on update needed.
 - Fixed: the chat (with Claude) sometimes answered a new message with its previous answer, and stayed one reply behind after that. It happened after a subagent ran in the background: when it finished, Claude wrote one more reply by itself, which was taken as the answer to your next message.

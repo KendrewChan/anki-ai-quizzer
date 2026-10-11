@@ -6,7 +6,7 @@ import html
 from aqt import mw
 
 from . import missed_today
-from .missed import _count_html
+from .missed import count_html
 from .tab_page import CSS as TAB_CSS, Tab
 
 CSS = TAB_CSS + """
@@ -29,7 +29,7 @@ class MissedPage(Tab):
         for deck, notes in decks:
             body.append(f'<div class="deck">{html.escape(deck)}</div>')
             for n in notes:
-                lis = "".join(f"<li>{_count_html(c)} {h}</li>" for h, c in n["items"])  # h is already safe HTML
+                lis = "".join(f"<li>{count_html(c)} {h}</li>" for h, c in n["items"])  # h is already safe HTML
                 body.append(f'<div class="note"><div class="front">{html.escape(n["front"])} '
                             f'<i>({n["reviews"]} review{"s" if n["reviews"] != 1 else ""})</i></div><ul>{lis}</ul></div>')
         if not body:
