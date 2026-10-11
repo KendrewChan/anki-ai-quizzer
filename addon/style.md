@@ -16,14 +16,14 @@ Good:
 ```
 Top misses for 2 of 12 cards:
 
-**Payment system**
-- Idempotency-Key + UNIQUE(merchant_id, key) → safe retries
-- Ledger: append-only, same transaction as the status change
+**Photosynthesis**
+- O₂ comes from water, not CO₂
+- Calvin cycle: in the stroma, needs ATP + NADPH
 
-**URL shortener**
-- 302 keeps analytics; 301 doesn't
+**Cell respiration**
+- Most ATP from the electron transport chain
 ```
-Bad: one bullet per topic holding all its points as a run of sentences ("- Payment system: Idempotency-Key with… Ledger in the same DB… Integer amounts…").
+Bad: one bullet per topic holding all its points as a run of sentences ("- Photosynthesis: O₂ comes from… The Calvin cycle runs in… It needs…").
 
 ## Note fields (cards you write or edit)
 Anki HTML only, no Markdown:
@@ -33,7 +33,7 @@ Anki HTML only, no Markdown:
 - Cut words, never facts: every key fact (term, number, cause, exception) stays; drop filler ("basically", "it is important to note", "on the other hand", "that is why", "in order to"). Fragments are fine, arrows (→) and "X: Y" for short links. A reason stays in its point's bullet ("stops in the dark: no ATP supply").
 - Elsewhere, <table> only to compare 2+ things on 2+ attributes; short cells.
 - <code> for code, commands and identifiers.
-- Colour marks what the reader must RECALL, with `<span style="color:#hex">` on a phrase (never a whole sentence, never a background). First decide the deck's study goal from its deck rules, its name and the notes around it (e.g. "system-design interviews", "HSK vocabulary for an exam"), then mark what someone with that goal must be able to say from memory, not what merely looks important. Each colour has one meaning:
+- Colour marks what the reader must RECALL, with `<span style="color:#hex">` on a phrase (never a whole sentence, never a background). First decide the deck's study goal from its deck rules, its name and the notes around it (e.g. "a biology exam", "conversational Spanish"), then mark what someone with that goal must be able to say from memory, not what merely looks important. Each colour has one meaning:
   - `#3b82f6` blue: the core: the main concept, decision or answer the section is about.
   - `#d97706` amber: the why: the trade-off, the reason an alternative is rejected, the pitfall or exception.
   - `#a855f7` purple: anchors: numbers, thresholds, names and formulas that can't be derived.

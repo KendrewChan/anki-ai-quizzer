@@ -57,10 +57,10 @@ def test_full_model_id_accepted():
 
 
 def test_custom_add_and_remove():
-    new, log, _, _ = apply([{"add_custom": " grade strictly "}, {"add_custom": "scenario questions"}])
-    assert new["custom"] == ["grade strictly", "scenario questions"]
+    new, log, _, _ = apply([{"add_custom": " grade strictly "}, {"add_custom": "worked examples"}])
+    assert new["custom"] == ["grade strictly", "worked examples"]
     new, log, _, _ = apply([{"remove_custom": 1}], cfg=new)
-    assert new["custom"] == ["scenario questions"] and log == ['✓ removed custom rule 1: "grade strictly"']
+    assert new["custom"] == ["worked examples"] and log == ['✓ removed custom rule 1: "grade strictly"']
 
 
 def test_undo_restores_previous_config():
@@ -91,68 +91,68 @@ def test_tutor_system_prompt_appends_custom_rules():
     assert sp.startswith(grading.SYSTEM_PROMPT) and sp.endswith("- grade strictly")
 
 
-DECKS = {"Coding": "1", "Coding::Languages": "2", "Coding::Languages::Golang": "3",
-         "HSK": "4", "Archive::Languages::Golang": "5"}
+DECKS = {"Biology": "1", "Biology::Cells": "2", "Biology::Cells::Mitochondria": "3",
+         "Spanish": "4", "Archive::Cells::Mitochondria": "5"}
 
 
 def test_deck_chain_outer_to_inner_skips_decks_without_prompt():
-    prompts = {"1": "scenario questions", "3": "ask for code", "4": "pinyin"}
-    assert config_ops.deck_chain("Coding::Languages::Golang", DECKS, prompts) == [
-        ("Coding", "scenario questions"), ("Coding::Languages::Golang", "ask for code")]
-    assert config_ops.deck_chain("HSK", DECKS, prompts) == [("HSK", "pinyin")]
+    prompts = {"1": "worked examples", "3": "ask for diagrams", "4": "accents"}
+    assert config_ops.deck_chain("Biology::Cells::Mitochondria", DECKS, prompts) == [
+        ("Biology", "worked examples"), ("Biology::Cells::Mitochondria", "ask for diagrams")]
+    assert config_ops.deck_chain("Spanish", DECKS, prompts) == [("Spanish", "accents")]
     assert config_ops.deck_chain("Unknown::Deck", DECKS, prompts) == []
 
 
 def test_set_and_clear_deck_prompt_keyed_by_id():
-    new, log, _, hist = apply([{"set_deck_prompt": {"deck": "hsk", "prompt": "require pinyin"}}], decks=DECKS)
-    assert new["deck_prompts"] == {"4": "require pinyin"} and log == ['✓ prompt for HSK: "require pinyin"']
-    new, log, _, _ = apply([{"clear_deck_prompt": "HSK"}], cfg=new, decks=DECKS)
-    assert new["deck_prompts"] == {} and log == ["✓ cleared prompt for HSK"]
+    new, log, _, hist = apply([{"set_deck_prompt": {"deck": "spanish", "prompt": "require accents"}}], decks=DECKS)
+    assert new["deck_prompts"] == {"4": "require accents"} and log == ['✓ prompt for Spanish: "require accents"']
+    new, log, _, _ = apply([{"clear_deck_prompt": "Spanish"}], cfg=new, decks=DECKS)
+    assert new["deck_prompts"] == {} and log == ["✓ cleared prompt for Spanish"]
 
 
 def test_deck_prompt_survives_rename_because_keyed_by_id():
-    new, _, _, _ = apply([{"set_deck_prompt": {"deck": "HSK", "prompt": "pinyin"}}], decks=DECKS)
-    renamed = {"Chinese::HSK": "4"}
-    assert config_ops.deck_chain("Chinese::HSK", renamed, new["deck_prompts"]) == [("Chinese::HSK", "pinyin")]
+    new, _, _, _ = apply([{"set_deck_prompt": {"deck": "Spanish", "prompt": "accents"}}], decks=DECKS)
+    renamed = {"Languages::Spanish": "4"}
+    assert config_ops.deck_chain("Languages::Spanish", renamed, new["deck_prompts"]) == [("Languages::Spanish", "accents")]
 
 
 def test_deck_sharp_override_inherited_innermost_wins():
     cfg = dict(BASE)
-    assert config_ops.deck_toggle_source(cfg, "sharp", "Coding::Languages::Golang", DECKS) == (True, None)  # default on
-    new, log, _, _ = apply([{"set_deck_sharp": {"deck": "Coding", "on": False}}], cfg=cfg, decks=DECKS)
-    assert new["deck_sharp"] == {"1": False} and log == ["✓ Rewrite question for Coding and its subdecks: off"]
-    assert config_ops.deck_toggle_source(new, "sharp", "Coding::Languages::Golang", DECKS) == (False, "Coding")
-    assert config_ops.deck_toggle_on(new, "sharp", "HSK", DECKS) is True
-    new, _, _, _ = apply([{"set_deck_sharp": {"deck": "Coding::Languages", "on": "on"}}], cfg=new, decks=DECKS)
-    assert config_ops.deck_toggle_source(new, "sharp", "Coding::Languages::Golang", DECKS) == (True, "Coding::Languages")
-    new, log, _, _ = apply([{"set_deck_sharp": {"deck": "Coding", "on": None}}], cfg=new, decks=DECKS)
-    assert new["deck_sharp"] == {"2": True} and log == ["✓ Rewrite question for Coding: follow parent (default on)"]
+    assert config_ops.deck_toggle_source(cfg, "sharp", "Biology::Cells::Mitochondria", DECKS) == (True, None)  # default on
+    new, log, _, _ = apply([{"set_deck_sharp": {"deck": "Biology", "on": False}}], cfg=cfg, decks=DECKS)
+    assert new["deck_sharp"] == {"1": False} and log == ["✓ Rewrite question for Biology and its subdecks: off"]
+    assert config_ops.deck_toggle_source(new, "sharp", "Biology::Cells::Mitochondria", DECKS) == (False, "Biology")
+    assert config_ops.deck_toggle_on(new, "sharp", "Spanish", DECKS) is True
+    new, _, _, _ = apply([{"set_deck_sharp": {"deck": "Biology::Cells", "on": "on"}}], cfg=new, decks=DECKS)
+    assert config_ops.deck_toggle_source(new, "sharp", "Biology::Cells::Mitochondria", DECKS) == (True, "Biology::Cells")
+    new, log, _, _ = apply([{"set_deck_sharp": {"deck": "Biology", "on": None}}], cfg=new, decks=DECKS)
+    assert new["deck_sharp"] == {"2": True} and log == ["✓ Rewrite question for Biology: follow parent (default on)"]
 
 
 def test_deck_sharp_parent_change_makes_subdecks_follow_others_kept():
     cfg = dict(BASE, deck_sharp={"2": True, "3": False, "4": False, "5": True})
-    new, log, _, _ = apply([{"set_deck_sharp": {"deck": "Coding", "on": False}}], cfg=cfg, decks=DECKS)
+    new, log, _, _ = apply([{"set_deck_sharp": {"deck": "Biology", "on": False}}], cfg=cfg, decks=DECKS)
     assert new["deck_sharp"] == {"1": False, "4": False, "5": True}
     assert "2 subdeck setting(s) now follow it" in log[0]
-    new, _, _, _ = apply([{"set_deck_sharp": {"deck": "Coding::Languages::Golang", "on": True}}], cfg=new, decks=DECKS)
+    new, _, _, _ = apply([{"set_deck_sharp": {"deck": "Biology::Cells::Mitochondria", "on": True}}], cfg=new, decks=DECKS)
     assert new["deck_sharp"]["1"] is False and new["deck_sharp"]["3"] is True  # a subdeck exception keeps the parent
 
 
 def test_deck_sharp_change_flips_effective_value():
     cfg = dict(BASE, deck_sharp={"1": False})
-    assert config_ops.deck_toggle_change(cfg, "sharp", "Coding::Languages", DECKS) == {
-        "set_deck_sharp": {"deck": "Coding::Languages", "on": True}}
-    assert config_ops.deck_toggle_change(cfg, "sharp", "HSK", DECKS) == {"set_deck_sharp": {"deck": "HSK", "on": False}}
+    assert config_ops.deck_toggle_change(cfg, "sharp", "Biology::Cells", DECKS) == {
+        "set_deck_sharp": {"deck": "Biology::Cells", "on": True}}
+    assert config_ops.deck_toggle_change(cfg, "sharp", "Spanish", DECKS) == {"set_deck_sharp": {"deck": "Spanish", "on": False}}
 
 
 def test_deck_ai_toggle_independent_and_cascades():
     cfg = dict(BASE, deck_sharp={"1": False}, deck_ai={"3": False})
-    new, log, _, _ = apply([{"set_deck_ai": {"deck": "Coding", "on": False}}], cfg=cfg, decks=DECKS)
+    new, log, _, _ = apply([{"set_deck_ai": {"deck": "Biology", "on": False}}], cfg=cfg, decks=DECKS)
     assert new["deck_ai"] == {"1": False} and new["deck_sharp"] == {"1": False}
-    assert log[0].startswith("✓ AI Study for Coding and its subdecks: off")
-    assert config_ops.deck_toggle_on(new, "ai", "Coding::Languages::Golang", DECKS) is False
-    assert config_ops.deck_toggle_on(new, "ai", "HSK", DECKS) is True
-    assert config_ops.deck_toggle_change(new, "ai", "HSK", DECKS) == {"set_deck_ai": {"deck": "HSK", "on": False}}
+    assert log[0].startswith("✓ AI Study for Biology and its subdecks: off")
+    assert config_ops.deck_toggle_on(new, "ai", "Biology::Cells::Mitochondria", DECKS) is False
+    assert config_ops.deck_toggle_on(new, "ai", "Spanish", DECKS) is True
+    assert config_ops.deck_toggle_change(new, "ai", "Spanish", DECKS) == {"set_deck_ai": {"deck": "Spanish", "on": False}}
     assert "set_deck_ai" in config_ops.SETTINGS_RULES
 
 
@@ -164,17 +164,17 @@ def test_prune_drops_missing_decks_from_prompts_and_sharp():
 
 def test_config_prompt_shows_deck_sharp():
     cfg = dict(BASE, deck_sharp={"1": False})
-    p = config_ops.settings_context(cfg, "ok", decks=DECKS, selected="Coding::Languages")
-    assert "- Coding: Rewrite question off" in p and "Rewrite question off" in p
+    p = config_ops.settings_context(cfg, "ok", decks=DECKS, selected="Biology::Cells")
+    assert "- Biology: Rewrite question off" in p and "Rewrite question off" in p
 
 
 @pytest.mark.parametrize("change,msg", [
-    ({"set_deck_sharp": {"deck": "HSK", "on": "maybe"}}, "true or false"),
-    ({"set_deck_sharp": {"deck": "HSK", "on": None}}, "no Rewrite question setting"),
-    ({"set_deck_prompt": {"deck": "Golang", "prompt": "x"}}, "ambiguous"),
+    ({"set_deck_sharp": {"deck": "Spanish", "on": "maybe"}}, "true or false"),
+    ({"set_deck_sharp": {"deck": "Spanish", "on": None}}, "no Rewrite question setting"),
+    ({"set_deck_prompt": {"deck": "Mitochondria", "prompt": "x"}}, "ambiguous"),
     ({"set_deck_prompt": {"deck": "Nope", "prompt": "x"}}, "no deck named"),
-    ({"set_deck_prompt": {"deck": "HSK", "prompt": " "}}, "empty deck prompt"),
-    ({"clear_deck_prompt": "HSK"}, "has no prompt"),
+    ({"set_deck_prompt": {"deck": "Spanish", "prompt": " "}}, "empty deck prompt"),
+    ({"clear_deck_prompt": "Spanish"}, "has no prompt"),
 ])
 def test_bad_deck_changes_rejected(change, msg):
     new, log, _, hist = apply([change], decks=DECKS)
@@ -182,7 +182,7 @@ def test_bad_deck_changes_rejected(change, msg):
 
 
 def test_unique_leaf_name_resolves():
-    new, _, _, _ = apply([{"set_deck_prompt": {"deck": "languages", "prompt": "x"}}], decks=DECKS)
+    new, _, _, _ = apply([{"set_deck_prompt": {"deck": "cells", "prompt": "x"}}], decks=DECKS)
     assert new["deck_prompts"] == {"2": "x"}
 
 
@@ -192,19 +192,19 @@ def test_prune_drops_deleted_decks():
 
 
 def test_config_prompt_shows_selected_deck_chain():
-    cfg = dict(BASE, deck_prompts={"1": "scenarios", "3": "code"})
-    p = config_ops.settings_context(cfg, "ok", DECKS, "Coding::Languages::Golang")
-    assert "Selected deck: Coding::Languages::Golang" in p
-    assert "  Coding: scenarios\n  Coding::Languages::Golang: code" in p
-    assert "- HSK" not in p and "HSK" in p  # listed as a deck, no prompt
+    cfg = dict(BASE, deck_prompts={"1": "examples", "3": "diagrams"})
+    p = config_ops.settings_context(cfg, "ok", DECKS, "Biology::Cells::Mitochondria")
+    assert "Selected deck: Biology::Cells::Mitochondria" in p
+    assert "  Biology: examples\n  Biology::Cells::Mitochondria: diagrams" in p
+    assert "- Spanish" not in p and "Spanish" in p  # listed as a deck, no prompt
 
 
 def test_card_prompts_carry_deck_rules():
-    rules = [("Coding", "scenarios"), ("Coding::Languages::Golang", "code")]
+    rules = [("Biology", "scenarios"), ("Biology::Cells::Mitochondria", "code")]
     ask = grading.ask_prompt("Q", rules)
     grade = grading.grade_prompt("Q", [], "A", ["mine"], rules)
     for p in (ask, grade):
-        assert "Deck rules (outer → inner):\n- Coding: scenarios\n- Coding::Languages::Golang: code" in p
+        assert "Deck rules (outer → inner):\n- Biology: scenarios\n- Biology::Cells::Mitochondria: code" in p
     assert "Deck rules" not in grading.ask_prompt("Q")
 
 

@@ -10,8 +10,8 @@ from addon import panel_page, ui  # noqa: E402
 
 
 def test_strip_html_drops_style_script_tags_and_entities():
-    html = "<style>.card{x:1}</style><div>Kafka&nbsp;ordering</div><script>alert(1)</script><br>by key &amp; partition"
-    assert textutil.strip_html(html) == "Kafka ordering\nby key & partition"
+    html = "<style>.card{x:1}</style><div>Mitochondria&nbsp;make</div><script>alert(1)</script><br>ATP &amp; heat"
+    assert textutil.strip_html(html) == "Mitochondria make\nATP & heat"
 
 
 def test_answer_only_keeps_text_after_answer_hr():
@@ -363,12 +363,12 @@ def test_named_sections_stay_titles_with_guidance_in_hints():
 
 
 def test_ask_prompt_sends_past_misses_only_when_deck_rules_ask():
-    past = [("consistent hashing", 2)]
-    asked = grading.ask_prompt("Design X", [("D", "hint at the sections I missed before")], missed=past)
-    assert "Missed in earlier reviews" in asked and "- [2] consistent hashing" in asked
-    assert "consistent hashing" not in grading.ask_prompt("Design X", [("D", "seven sections")], missed=past)
-    assert "consistent hashing" not in grading.ask_prompt("Design X", missed=past)
-    assert "Missed in earlier" not in grading.ask_prompt("Design X", [("D", "hint at what I missed")])
+    past = [("Calvin cycle", 2)]
+    asked = grading.ask_prompt("Explain photosynthesis", [("D", "hint at the sections I missed before")], missed=past)
+    assert "Missed in earlier reviews" in asked and "- [2] Calvin cycle" in asked
+    assert "Calvin cycle" not in grading.ask_prompt("Explain photosynthesis", [("D", "three sections")], missed=past)
+    assert "Calvin cycle" not in grading.ask_prompt("Explain photosynthesis", missed=past)
+    assert "Missed in earlier" not in grading.ask_prompt("Explain photosynthesis", [("D", "hint at what I missed")])
 
 
 def test_parse_grade_extra_optional():
