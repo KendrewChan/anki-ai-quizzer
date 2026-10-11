@@ -4,7 +4,7 @@ import html
 import json
 
 from . import grading
-from .textutil import rich
+from .textutil import rich, safe_html
 
 CSS = """
 <style>
@@ -30,7 +30,6 @@ CSS = """
               border-radius: 8px; border: 1px solid #8884; font-size: 0.92em; }
 .ai-badge { display: inline-block; padding: 0.1em 0.55em; border-radius: 4px; font-weight: 700;
             color: #fff; font-size: 0.85em; letter-spacing: 0.04em; }
-.ai-score { margin-left: 0.5em; font-weight: 700; }
 .ai-wrong { background: #c0392b; } .ai-partial { background: #c27c0e; } .ai-correct { background: #27864a; }
 .ai-pq { margin: 0.6em 0; } .ai-pq-q { font-weight: 600; white-space: pre-wrap; }
 .ai-you { opacity: 0.75; white-space: pre-wrap; margin: 0.2em 0; }
@@ -275,12 +274,12 @@ def verdict_html(verdict: dict, questions: list, answers: list) -> str:
         "<b>Missed:</b><ul>" + "".join(f"<li>{rich(m)}</li>" for m in missed) + "</ul>"
         if missed else "<b>Missed:</b> nothing"
     )
-    score = f'<span class="ai-score">{rich(verdict["score"])}</span>' if verdict.get("score") else ""
+    extra = f"<div style='margin-top:0.5em'>{safe_html(verdict['extra'])}</div>" if verdict.get("extra") else ""
     return (
         f'{CSS}<div class="ai-verdict"><span class="ai-badge ai-{v}">{v.upper()}</span>'
-        f'{score}'
         f'{"".join(rows)}'
         f"<div style='margin-top:0.5em'>{rich(verdict['feedback'])}</div>"
+        f"{extra}"
         f"<div style='margin-top:0.5em'>{missed_part}</div></div>"
     )
 
