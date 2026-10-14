@@ -82,9 +82,25 @@ def test_plan_changes():
         {"rename": "x"},
     ], DECKS, {7: note}, staged)
     assert ops == [("add", "Biology::Ch3", "basic", ["F", "B"]), ("add", "Chem", "cloze", ["{{c1::H2O}} is water", ""]),
-                   ("update", note, {"Back": "A2"}), ("edit", 100, {"Back": "z"}), ("remove", 100)]
+                   ("update", note, {"Back": "A2"}, None), ("edit", 100, {"Back": "z"}, None), ("remove", 100)]
     assert len(rejected) == 7 and all(r.startswith("✗ ") for r in rejected)
     assert "nothing changed" in rejected[3] and "no field 'Extra'" in rejected[4]
+
+
+def test_plan_changes_moves():
+    note = {"id": 7, "type": "Basic", "deck": "Biology::Ch3", "fields": {"Front": "Q", "Back": "A"}}
+    staged = [{"id": 100, "deck": "Biology", "of": None, "type": "Basic", "fields": {"Front": "x", "Back": "y"}}]
+    ops, rejected = g.plan_changes([
+        {"update": {"note_id": 7, "deck": "biology::Ch4"}},  # move only: no fields needed
+        {"update": {"note_id": 7, "deck": "Physics", "fields": {"Back": "A"}}},  # unchanged fields + move is a move
+        {"edit": {"staged": 1, "deck": "Chem"}},
+        {"update": {"note_id": 7, "deck": "biology::ch3"}},  # its own deck: nothing to do
+        {"update": {"note_id": 7, "deck": "AI-GEN::Biology"}},
+        {"edit": {"staged": 1, "deck": "Biology"}},
+    ], DECKS, {7: note}, staged)
+    assert ops == [("update", note, {}, "Biology::Ch4"), ("update", note, {"Back": "A"}, "Physics"),
+                   ("edit", 100, {}, "Chem")]
+    assert len(rejected) == 3 and "nothing changed" in rejected[0] and "nothing changed" in rejected[2]
 
 
 def test_cards_context():

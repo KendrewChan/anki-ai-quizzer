@@ -188,7 +188,8 @@ A tab of the AI Window. Card requests are made in the chat (cards section) from 
 - Cards the AI read (`read_decks`) are kept while the tab is on screen and forgotten after a request made elsewhere, so the AI re-reads them when next needed.
 - **Updating existing cards**:
   - The AI may return `read_decks`. The add-on then loads those decks' notes (subdecks included, raw field HTML, ≤ 120k chars) and resends the request, within the message's `assistant_ops.MAX_ROUNDS` rounds.
-  - `update {note_id, fields}` stages a copy tagged `ai_generate_of_<nid>`; a second update edits that copy.
+  - `update {note_id, fields, deck}` (fields, deck or both) stages a copy tagged `ai_generate_of_<nid>`; a second update edits that copy.
+  - **Moves**: `deck` on an update stages the copy under `AI-GEN::<new deck>` (an existing or new path, resolved like a new card's) and tags it `ai_generate_move` when that differs from the original's deck. `edit {staged, deck}` moves a staged card; moving an update copy back to its original's deck clears the tag. The tab marks such cards **MOVE from <deck>**, and the AI sees `moves it from <deck>` on the staged card. The AI is told to move cards this way, never by adding new copies.
 - **AI-GEN staging deck**:
   - A temporary top-level deck, created when first needed. Its subdecks mirror real deck paths.
   - New cards are Basic or Cloze. They may target any deck path, including a new top-level deck; only `AI-GEN` itself is never a target.
@@ -196,7 +197,7 @@ A tab of the AI Window. Card requests are made in the chat (cards section) from 
 - **Approve → Submit**:
   - **Approve / Unapprove** (card, deck or all) toggles the `ai_generate_ok` tag. An AI edit of an approved card clears its approval, and the AI is told to leave approved cards alone unless asked.
   - **Submit N approved**:
-    - Updates are written into the originals, keeping review history; if the original was deleted, the update is kept as a new card. Only fields that differ from the original as it was when staged are written (the copy carries a digest per field in `ai_generate_base_<i>_<digest>` tags), so a review's Missed section or a manual edit made meanwhile survives.
+    - Updates are written into the originals, keeping review history; if the original was deleted, the update is kept as a new card. A move (`ai_generate_move`) puts all the original note's cards into the staged deck with `col.set_deck`, the same as Browse → Change Deck: note and card ids, interval, due, ease and review log stay; a card in a filtered deck is taken out of it and returns to its scheduled due first. Only fields that differ from the original as it was when staged are written (the copy carries a digest per field in `ai_generate_base_<i>_<digest>` tags), so a review's Missed section or a manual edit made meanwhile survives.
     - New cards move to their real deck, which is created if missing, with the tag removed.
     - Emptied AI-GEN decks are removed.
   - **Discard** deletes the card or deck immediately.

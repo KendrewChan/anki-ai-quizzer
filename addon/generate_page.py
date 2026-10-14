@@ -185,7 +185,8 @@ class GeneratePage(Tab):
     def _submitted(self, counts):
         self.loaded = {}  # real decks changed: the AI re-reads them when needed
         left = len(generate_col.staged(mw.col))
-        self.say(f"Submitted: {counts['updated']} card{'s' if counts['updated'] != 1 else ''} updated, "
+        moved = f" ({counts['moved']} moved to another deck)" if counts.get("moved") else ""
+        self.say(f"Submitted: {counts['updated']} card{'s' if counts['updated'] != 1 else ''} updated{moved}, "
                  f"{counts['added']} added to their decks."
                  + (f" {left} unapproved card{'s' if left != 1 else ''} still in {generate_ops.TEMP_DECK}." if left else "")
                  + " Edit → Undo reverses this.")
@@ -239,6 +240,9 @@ class GeneratePage(Tab):
                 out.append(f'<div class="deck">{html.escape(deck or "(no deck)")}<span class="acts">{approve}'
                            f'<button onclick="pycmd(\'aiGen:discard:{ids}\')">Discard deck</button></span></div>')
             kind = ('<span class="kind upd">UPDATE</span>' if s["of"] else '<span class="kind new">NEW</span>')
+            if s.get("from"):
+                kind += (f'<span class="kind upd" title="Submit moves the card here; scheduling is kept">'
+                         f'MOVE from {html.escape(s["from"])}</span>')
             body = self._card_body(f'{i}. {kind}', s["fields"], str(s["id"]))
             original = self._original(s["of"])
             toggle = ""

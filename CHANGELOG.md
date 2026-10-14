@@ -4,6 +4,7 @@ What changed in each version, newest first. How the add-on works today is in [do
 
 ## Unreleased
 
+- The chat can move existing cards to another deck without losing their scheduling ("move the enzyme cards into Biology::Ch4", "split this deck into subdecks by topic"). A move is staged like an update, marked **MOVE from <deck>** in the Generate/Update tab, and on Submit the original card changes deck, keeping its review history, due date and interval (a card sitting in a filtered deck goes back to its home deck first). Before, the AI could only make new copies in the other deck, which started from scratch.
 - Fixed: Submit on the Generate/Update tab overwrote a whole note, so a card reviewed after its update was staged lost its new Missed section (or any edit made meanwhile). Only the fields changed by the update are written now.
 - Fixed: once a card's Missed list was full, a point missed for the first time was never saved. Now the oldest of the least-missed points makes room.
 - Fixed: an unexpected reply could leave the reviewer or chat stuck on "Thinking…" for the rest of the session; it now shows an error and the next request works. Cancel no longer lets a message that hadn't started run anyway.
