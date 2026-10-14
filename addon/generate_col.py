@@ -12,6 +12,7 @@ TAG = "ai_generate"
 OF = "ai_generate_of_"  # + original note id, on a staged copy that updates that note
 OK = "ai_generate_ok"  # staged card the user approved; Submit ports only these
 BASE = "ai_generate_base_"  # + field index + "_" + digest of the original's field when the copy was staged
+MOVE = "ai_generate_move"  # staged update whose deck differs from the original's: Submit moves the original there
 CLOZE = 1  # notetype["type"] of cloze note types
 
 
@@ -21,9 +22,13 @@ def _search_deck(col, name: str) -> str:
 
 
 def _note_dict(col, note) -> dict:
+    return {"id": note.id, "type": note.note_type()["name"], "deck": _deck_of(col, note), "fields": dict(note.items())}
+
+
+def _deck_of(col, note) -> str:
+    """The real deck of a note's first card (its home deck while it sits in a filtered deck)."""
     card = note.cards()[0]
-    return {"id": note.id, "type": note.note_type()["name"], "deck": col.decks.name(card.odid or card.did),
-            "fields": dict(note.items())}
+    return col.decks.name(card.odid or card.did)
 
 
 def _digest(value: str) -> str:
@@ -57,7 +62,10 @@ def read_deck(col, name: str) -> list:
 
 
 def staged(col) -> list:
-    """Staged notes, sorted by real deck: note dict with "deck" = real deck (prefix removed), "of", "ok"."""
+    """Staged notes, sorted by real deck: note dict with "deck" = real deck (prefix removed), "of", "ok", and "from"
+    = the original's deck when Submit moves it (else None)."""
+    from anki.errors import NotFoundError
+
     if col.decks.id_for_name(TEMP_DECK) is None:
         return []
     out = []
@@ -67,6 +75,12 @@ def staged(col) -> list:
         d["deck"] = d["deck"][len(TEMP_DECK) + 2:]  # "" when sitting in AI-GEN itself
         d["of"] = _original_of(note)
         d["ok"] = OK in note.tags
+        d["from"] = None
+        if d["of"] and MOVE in note.tags:
+            try:
+                d["from"] = _deck_of(col, col.get_note(d["of"]))
+            except NotFoundError:  # original deleted: Submit keeps the copy as a new card
+                pass
         out.append(d)
     return sorted(out, key=lambda d: (d["deck"].lower(), d["id"]))
 
@@ -102,6 +116,7 @@ def _finish(col, pos):
 def apply_ops(col, ops) -> tuple:
     """Run plan_changes ops as one undo step. Returns (OpChanges, summary counts)."""
     from anki.collection import AddNoteRequest
+    from anki.errors import NotFoundError
 
     pos = col.add_custom_undo_entry(TEMP_DECK)
     counts = {"added": 0, "updated": 0, "edited": 0, "removed": 0}
@@ -120,6 +135,13 @@ def apply_ops(col, ops) -> tuple:
             changed[nid] = col.get_note(nid)
         return changed[nid]
 
+    moves = {}  # staged note id (or a not yet added copy) -> new real deck
+
+    def move(note, deck, orig_deck):
+        """Stage `note` under `deck`; an update copy is marked to move its original when that deck isn't its own."""
+        moves[note.id or id(note)] = deck
+        note.tags = [t for t in note.tags if t != MOVE] + ([MOVE] if orig_deck and deck != orig_deck else [])
+
     for op in ops:
         if op[0] == "add":
             _, deck, kind, values = op
@@ -130,7 +152,7 @@ def apply_ops(col, ops) -> tuple:
             adds.append(AddNoteRequest(note=note, deck_id=did(deck)))
             counts["added"] += 1
         elif op[0] == "update":
-            _, orig, fields = op
+            _, orig, fields, deck = op
             if orig["id"] in new_copies:
                 copy = new_copies[orig["id"]]
             elif orig["id"] in by_original:  # already staged: change that copy
@@ -143,16 +165,24 @@ def apply_ops(col, ops) -> tuple:
                 copy.tags = (list(src.tags) + [TAG, f"{OF}{src.id}"]
                              + [f"{BASE}{i}_{_digest(v)}" for i, v in enumerate(src.fields)])
                 new_copies[orig["id"]] = copy
-                adds.append(AddNoteRequest(note=copy, deck_id=did(orig["deck"])))
+                adds.append(AddNoteRequest(note=copy, deck_id=did(deck or orig["deck"])))
             for k, v in fields.items():
                 copy[k] = v
+            if deck:
+                move(copy, deck, orig["deck"])
             copy.tags = [t for t in copy.tags if t != OK]  # changed by the AI: needs a fresh look
             counts["updated"] += 1
         elif op[0] == "edit":
-            _, nid, fields = op
+            _, nid, fields, deck = op
             note = existing(nid)
             for k, v in fields.items():
                 note[k] = v
+            if deck:
+                of = _original_of(note)
+                try:
+                    move(note, deck, of and _deck_of(col, col.get_note(of)))
+                except NotFoundError:
+                    move(note, deck, None)
             note.tags = [t for t in note.tags if t != OK]
             counts["edited"] += 1
         elif op[0] == "remove":
@@ -160,6 +190,15 @@ def apply_ops(col, ops) -> tuple:
             counts["removed"] += 1
     if adds:
         col.add_notes(adds)
+    for req in adds:  # copies moved in this batch were keyed before they had an id
+        if id(req.note) in moves:
+            moves[req.note.id] = moves.pop(id(req.note))
+    targets = {}
+    for nid, deck in moves.items():
+        if nid not in removed:
+            targets.setdefault(deck, []).extend(col.get_note(nid).card_ids())
+    for deck, cids in targets.items():
+        col.set_deck(cids, did(deck))
     notes = [n for nid, n in changed.items() if nid not in removed]
     if notes:
         col.update_notes(notes)
@@ -197,7 +236,7 @@ def submit(col) -> tuple:
     from anki.errors import NotFoundError
 
     pos = col.add_custom_undo_entry(f"Submit {TEMP_DECK}")
-    counts = {"updated": 0, "added": 0}
+    counts = {"updated": 0, "added": 0, "moved": 0}
     drop, notes, moves = [], [], {}  # moves: real deck -> card ids
     for s in staged(col):
         if not s["ok"]:
@@ -219,9 +258,12 @@ def submit(col) -> tuple:
             notes.append(orig)
             drop.append(note.id)
             counts["updated"] += 1
+            if MOVE in note.tags:  # set_deck keeps scheduling and history; a filtered-deck card returns home first
+                moves.setdefault(s["deck"] or "Default", []).extend(orig.card_ids())
+                counts["moved"] += 1
         else:
             moves.setdefault(s["deck"] or "Default", []).extend(note.card_ids())
-            note.tags = [t for t in note.tags if t not in (TAG, OK) and not t.startswith((OF, BASE))]
+            note.tags = [t for t in note.tags if t not in (TAG, OK, MOVE) and not t.startswith((OF, BASE))]
             notes.append(note)
             counts["added"] += 1
     for deck, cids in moves.items():

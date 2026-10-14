@@ -59,7 +59,8 @@ A tab of the AI Window. Optionally pick a **reference** — a file or folder on 
 - New and updated cards wait in a temporary deck, **AI-GEN**, whose subdecks mirror where they'll go (`AI-GEN::Biology::Ch3`, or `AI-GEN::Physics` for a brand-new deck). Nothing in your real decks changes yet — you can study or edit them there.
 - On an UPDATE card, **Show Original** shows the card as it is now, fully expanded (click **Show Update** to go back).
 - **Approve** cards (each card, a whole deck, or all) — they stay in AI-GEN with a ✓ so you can keep generating; **Unapprove** changes your mind, **Discard** throws a card away.
-- **Submit** moves only the approved cards: updates are written into the original cards (review history kept), new cards go into their real decks, created if needed. Unapproved cards stay in AI-GEN. AI-GEN disappears once it's empty. Everything can be undone with Edit → Undo.
+- **Moving cards:** ask the chat to move or reorganise cards ("move the enzyme cards into Biology::Ch4", "split Chem into subdecks by topic"). Each move is staged as an UPDATE card marked **MOVE from <old deck>**. On Submit the original card changes deck and keeps its scheduling and review history; it isn't a new copy.
+- **Submit** moves only the approved cards: updates are written into the original cards (review history kept), moved cards change deck, new cards go into their real decks, created if needed. Unapproved cards stay in AI-GEN. AI-GEN disappears once it's empty. Everything can be undone with Edit → Undo.
 
 ## When something breaks
 

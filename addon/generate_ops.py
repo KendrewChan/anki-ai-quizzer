@@ -26,8 +26,8 @@ read_decks: decks whose existing cards you need to see (to update them, or to av
 A change in "cards" is one of:
 {"add": {"deck": "<real deck full name>", "type": "basic", "front": "...", "back": "..."}}
 {"add": {"deck": "<real deck full name>", "type": "cloze", "text": "... {{c1::hidden part}} ...", "extra": "..."}}
-{"update": {"note_id": <id of a card under Existing cards>, "fields": {"<field name>": "<whole new field content>"}}}
-{"edit": {"staged": <staged card number>, "fields": {"<field name>": "<whole new field content>"}}}
+{"update": {"note_id": <id of a card under Existing cards>, "fields": {"<field name>": "<whole new field content>"}, "deck": "<real deck full name>"}}
+{"edit": {"staged": <staged card number>, "fields": {"<field name>": "<whole new field content>"}, "deck": "<real deck full name>"}}
 {"remove": <staged card number>}
 
 Rules:
@@ -35,7 +35,8 @@ Rules:
 - One fact per card; short, specific fronts; answers as short as possible. Use cloze for definitions, lists and sentences where a key term can be blanked.
 - Field content is Anki HTML: <br>, <b>, <i>, <ul><li>, <code>. No Markdown.
 - When references are given, base cards on them; don't invent facts they don't contain unless asked. Don't duplicate existing or staged cards.
-- update/edit: use the card's own field names, include only fields you change, give their whole new content. Keep any "Missed (date)" section in a field exactly as it is.
+- update/edit: use the card's own field names, include only fields you change, give their whole new content. Keep any "Missed (date)" section in a field exactly as it is. Give "fields", "deck" or both.
+- Moving cards: to move existing cards to another deck (reorganising, splitting a deck into subdecks), use update with "deck" — leave out "fields" if their content stays. The card keeps its review history and scheduling. Never move a card by adding a new one and leaving the old one: that loses its history. "deck" may be an existing or a new deck path, as for add. edit with "deck" moves a staged card.
 - To change a staged card use edit/remove, not a new add. Staged cards marked "approved" were approved by the user: leave them alone unless asked (editing one un-approves it).
 - Deck rules (given when the user wrote any) are the user's own instructions for a deck and its subdecks: follow them for every card you add or change there. They outrank your defaults.
 - When you colour-code or highlight cards, begin "reply" with "Goal: <the study goal you inferred for the deck>." so the user can correct it.
@@ -182,7 +183,9 @@ def cards_context(decks: list, refs: dict = None, existing: dict = None, staged:
                 used += len(line)
         parts.append("Existing cards:\n" + "\n".join(out))
     if staged:
-        lines = [json.dumps({"staged": i, "kind": f"update of note {s['of']}" if s.get("of") else "new",
+        lines = [json.dumps({"staged": i, "kind": (f"update of note {s['of']}"
+                                                   + (f", moves it from {s['from']}" if s.get("from") else "")
+                                                   if s.get("of") else "new"),
                              "approved": bool(s.get("ok")), "deck": s["deck"], "type": s["type"],
                              "fields": s["fields"]}, ensure_ascii=False)
                  for i, s in enumerate(staged, 1)]
@@ -233,11 +236,20 @@ def _fields(raw, allowed, what: str) -> dict:
     return {k: str(v) for k, v in raw.items()}
 
 
+def _new_deck(name, decks: list, current: str):
+    """The deck an update/edit moves a card to, or None when it names none or the card's own deck."""
+    if not name:
+        return None
+    deck = target_deck(name, decks)
+    return None if deck.lower() == current.lower() else deck
+
+
 def plan_changes(changes: list, decks: list, existing: dict, staged: list):
     """Validate AI changes. existing: note id -> note dict; staged: as listed in the prompt (1-based numbers).
 
-    Returns (ops, rejected): ops are ("add", deck, kind, [field values]) | ("update", note dict, fields)
-    | ("edit", staged note id, fields) | ("remove", staged note id); rejected are "✗ reason" lines.
+    Returns (ops, rejected): ops are ("add", deck, kind, [field values]) | ("update", note dict, fields, new deck)
+    | ("edit", staged note id, fields, new deck) | ("remove", staged note id); new deck is None when the card stays.
+    Rejected are "✗ reason" lines.
     """
     ops, rejected = [], []
 
@@ -274,14 +286,23 @@ def plan_changes(changes: list, decks: list, existing: dict, staged: list):
                     note = existing[int(spec.get("note_id"))]
                 except (TypeError, ValueError, KeyError):
                     raise ValueError(f"note {spec.get('note_id')!r} isn't one of the cards I read")
-                fields = _fields(spec.get("fields"), list(note["fields"]), f"note {note['id']}")
-                if all(note["fields"][k] == v for k, v in fields.items()):
+                deck = _new_deck(spec.get("deck"), decks, note["deck"])
+                if spec.get("deck") and not deck and not spec.get("fields"):
+                    raise ValueError(f"note {note['id']}: nothing changed (already in {note['deck']})")
+                fields = (_fields(spec.get("fields"), list(note["fields"]), f"note {note['id']}")
+                          if spec.get("fields") or not deck else {})
+                if not deck and all(note["fields"][k] == v for k, v in fields.items()):
                     raise ValueError(f"note {note['id']}: nothing changed")
-                ops.append(("update", note, fields))
+                ops.append(("update", note, fields, deck))
             elif "edit" in ch:
                 spec = ch["edit"] if isinstance(ch["edit"], dict) else {}
                 s = staged_at(spec.get("staged"), "edit")
-                ops.append(("edit", s["id"], _fields(spec.get("fields"), list(s["fields"]), "staged card")))
+                deck = _new_deck(spec.get("deck"), decks, s["deck"])
+                if spec.get("deck") and not deck and not spec.get("fields"):
+                    raise ValueError(f"staged card {spec.get('staged')}: nothing changed (already in {s['deck']})")
+                fields = (_fields(spec.get("fields"), list(s["fields"]), "staged card")
+                          if spec.get("fields") or not deck else {})
+                ops.append(("edit", s["id"], fields, deck))
             elif "remove" in ch:
                 ops.append(("remove", staged_at(ch["remove"], "remove")["id"]))
             else:
