@@ -165,6 +165,7 @@ def question_html(original: str, mode: str) -> str:
     """Wrap Anki's rendered question. mode (main.rewrite_enabled):
     "sharp" — original folded under Show original; no box until setQuestions adds one per rewritten question.
     "keep"  — original shown as the question; no box until setQuestions adds what the deck prompt asks for (or one box).
+    "off"   — original shown as the question, no answer box (Space or Show Answer just shows the answer).
     ""      — original shown as the question with its box ready (cloze, or no question step)."""
     loading = '<div class="ai-item"><div class="ai-q loading">Preparing the questions…</div></div>'
     if mode == "sharp":
@@ -172,7 +173,7 @@ def question_html(original: str, mode: str) -> str:
         item = loading
     else:
         orig = f'<div id="ai-orig-plain">{original}</div>'
-        item = loading if mode else f'<div class="ai-item"><textarea class="ai-ans" placeholder="{HINT}"></textarea></div>'
+        item = {"off": ""}.get(mode, loading) if mode else f'<div class="ai-item"><textarea class="ai-ans" placeholder="{HINT}"></textarea></div>'
     js = JS.replace("__HINT__", json.dumps(HINT))
     return f'{CSS}<div id="ai-study">{orig}<div id="ai-items">{item}</div><div id="ai-status"></div></div>{js}'
 

@@ -134,6 +134,11 @@ def test_question_html_cloze_has_no_rewrite():
     assert 'ai-q loading' not in html and "<b>orig</b>" in html and 'class="ai-ans"' in html
 
 
+def test_question_html_rewrite_off_has_no_box():
+    html = ui.question_html("<b>orig</b>", "off")
+    assert "<b>orig</b>" in html and '<textarea' not in html and 'ai-q loading' not in html
+
+
 def test_verdict_html_escapes_user_answer():
     v = {"verdict": "wrong", "ease": 1, "feedback": "x", "missed": [], "per_question": []}
     html = ui.verdict_html(v, [], ["<script>"])

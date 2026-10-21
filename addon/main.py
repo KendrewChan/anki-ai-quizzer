@@ -81,10 +81,11 @@ def deck_rules(card, c: dict) -> list:
 
 
 def rewrite_enabled(card) -> str:
-    """Question step: "sharp", "keep" (Rewrite question off but a deck prompt applies) or "" (none; always for cloze)."""
+    """Question step: "sharp", "keep" (Rewrite question off but a deck prompt applies),
+    "off" (Rewrite question off, no deck prompt: no answer box) or "" (no question step: cloze)."""
     if card.note_type()["type"] == MODEL_CLOZE:
         return ""
-    return config_ops.ask_mode(cfg(), home_deck(card), deck_ids())
+    return config_ops.ask_mode(cfg(), home_deck(card), deck_ids()) or "off"
 
 
 def eval_card(js: str):
@@ -157,7 +158,7 @@ def on_show_question(card):
     rules = deck_rules(card, c)
     S.ctx[card.id] = {"q": q, "a": a, "questions": [], "rules": rules}
     mode = rewrite_enabled(card)
-    if not mode:
+    if mode in ("", "off"):
         return
     parse = grading.parse_questions if mode == "sharp" else grading.parse_added_questions
     past = []
