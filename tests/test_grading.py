@@ -21,7 +21,9 @@ def test_answer_only_keeps_text_after_answer_hr():
 
 def test_parse_grade_from_fenced_reply():
     r = grading.parse_grade('```json\n{"verdict":"Partial","ease":"2","feedback":" f ","missed":["a",""," b "]}\n```')
-    assert r == {"per_question": [], "verdict": "partial", "ease": 2, "feedback": "f", "missed": ["a", "b"], "extra": ""}
+    assert r == {"per_question": [], "verdict": "partial", "ease": 2, "feedback": "f", "missed": ["a", "b"], "remember": [], "extra": ""}
+    r = grading.parse_grade('{"verdict":"wrong","remember":["1","2","3","4"]}')
+    assert r["remember"] == ["1", "2", "3"]
 
 
 def test_parse_grade_per_question_normalised():
@@ -143,6 +145,13 @@ def test_verdict_html_escapes_user_answer():
     v = {"verdict": "wrong", "ease": 1, "feedback": "x", "missed": [], "per_question": []}
     html = ui.verdict_html(v, [], ["<script>"])
     assert "&lt;script&gt;" in html and "Missed:</b> nothing" in html
+
+
+def test_verdict_html_shows_remember_only_when_present():
+    v = {"verdict": "wrong", "ease": 1, "feedback": "x", "missed": ["a", "b"], "per_question": []}
+    assert "Remember next time" not in ui.verdict_html(v, [], ["x"])
+    html = ui.verdict_html(dict(v, remember=["**a**"]), [], ["x"])
+    assert "Remember next time:</b><ul><li><b>a</b></li></ul>" in html
 
 
 def test_verdict_html_per_question_rows():

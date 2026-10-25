@@ -275,13 +275,18 @@ def verdict_html(verdict: dict, questions: list, answers: list) -> str:
         "<b>Missed:</b><ul>" + "".join(f"<li>{rich(m)}</li>" for m in missed) + "</ul>"
         if missed else "<b>Missed:</b> nothing"
     )
+    remember = verdict.get("remember") or []
+    remember_part = (
+        "<div style='margin-top:0.5em'><b>Remember next time:</b><ul>"
+        + "".join(f"<li>{rich(r)}</li>" for r in remember) + "</ul></div>" if remember else ""
+    )
     extra = f"<div style='margin-top:0.5em'>{safe_html(verdict['extra'])}</div>" if verdict.get("extra") else ""
     return (
         f'{CSS}<div class="ai-verdict"><span class="ai-badge ai-{v}">{v.upper()}</span>'
         f'{"".join(rows)}'
         f"<div style='margin-top:0.5em'>{rich(verdict['feedback'])}</div>"
         f"{extra}"
-        f"<div style='margin-top:0.5em'>{missed_part}</div></div>"
+        f"<div style='margin-top:0.5em'>{missed_part}</div>{remember_part}</div>"
     )
 
 

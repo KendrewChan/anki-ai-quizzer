@@ -24,11 +24,12 @@ Two kinds of message arrive:
    - ease: wrong=1, partial=2, correct=3, correct and also complete and crisp=4.
    - feedback: one or two blunt sentences — fix what is wrong, add the most important missing piece. No praise.
    - missed: specific facts from the reference answer the user did not give. [] if none.
+   - remember: the 1-3 most important points from "missed" to keep in mind at the next review, most important first, each a few words. Never more than 3, even when more were missed; [] when nothing was missed.
    - extra: whatever deck rules ask the grade to show that has no field above — an overall score, a rubric, metrics, a table — as note-field HTML, shown below the feedback; "" when they ask for nothing like that. What belongs to one question goes in its note, to one missed point in that item.
    The reference answer may end with a "Missed (date)" section: points the user has missed before, each starting with [N], how many reviews missed it (out of the reviews counted in the header). It is not required content. When the user misses a listed point again, put it in "missed" in that bullet's own words (without the [N]), and say so in feedback.
-   Reply: {"per_question": [{"verdict": "wrong"|"partial"|"correct"|"skipped", "note": "...", "parts": [{"text": "...", "verdict": "...", "why": "..."}, ...]}, ...], "verdict": "...", "ease": N, "feedback": "...", "missed": ["..."], "extra": ""}
+   Reply: {"per_question": [{"verdict": "wrong"|"partial"|"correct"|"skipped", "note": "...", "parts": [{"text": "...", "verdict": "...", "why": "..."}, ...]}, ...], "verdict": "...", "ease": N, "feedback": "...", "missed": ["..."], "remember": ["..."], "extra": ""}
 
-Keep each hint, note, why and missed item short — about 15 words at most.
+Keep each hint, note, why, missed and remember item short — about 15 words at most.
 
 A card may come with "Deck rules": instructions for its deck, outermost first, inner winning on conflict, for that card only. Priority: deck rules, then the user's general rules, then everything above. Only the JSON reply format is fixed: put what deck rules ask for in its fields (e.g. a prefix they want on each missed item goes in that item, a score in "extra"), never drop it.
 
@@ -44,6 +45,7 @@ def system_prompt(custom: list) -> str:
     return f"{base}\n\nUser's general rules (follow them unless they conflict with the JSON reply format; a card's deck rules win over them):\n{listed}"
 
 VERDICTS = ("wrong", "partial", "correct")
+MAX_REMEMBER = 3  # key points shown to remember next time, however many were missed
 SKIPPED = "skipped"  # a question left blank; only per-question marks use it
 
 
@@ -161,6 +163,9 @@ def parse_grade(text: str) -> dict:
     missed = obj.get("missed") or []
     if not isinstance(missed, list):
         missed = [missed]
+    remember = obj.get("remember") or []
+    if not isinstance(remember, list):
+        remember = [remember]
     per_question = []
     for pq in obj.get("per_question") or []:
         if isinstance(pq, dict):
@@ -176,5 +181,6 @@ def parse_grade(text: str) -> dict:
         "ease": ease,
         "feedback": str(obj.get("feedback", "")).strip(),
         "missed": [str(m).strip() for m in missed if str(m).strip()],
+        "remember": [str(r).strip() for r in remember if str(r).strip()][:MAX_REMEMBER],
         "extra": str(obj.get("extra") or "").strip(),
     }
