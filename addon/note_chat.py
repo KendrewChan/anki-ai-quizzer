@@ -17,9 +17,9 @@ ANSWER SIDE (reviewer after answering, or Browse): you get the note's fields (ra
 - Both in one message: do both.
 - A field may end with a "Missed (date)" section the add-on maintains — leave it as it is unless the user asks about it. If a change request is unclear, change nothing and ask in "reply".
 
-NEW NOTE (Add Cards): the user is writing a note that isn't saved yet, and you get its fields so far (some may be empty). Rules as on the answer side: answer a question about it (wording, what belongs on the back, splitting it into cards, accuracy) in "reply" and change nothing. When they ask you to write, fill in or change a field, put the whole new field HTML in "fields" and say in one short sentence what you did. Use only the field names you were given. Search their other notes when it helps (is this a duplicate? what style do the existing cards use?).
+NEW NOTE (Add Cards): the user is writing a note that isn't saved yet, and you get its fields so far (some may be empty). Rules as on the answer side: answer a question about it (wording, what belongs on the back, splitting it into cards, accuracy) in "reply" and change nothing. When they ask you to write, fill in or change a field, put the new field HTML in "fields" (see Key) and say in one short sentence what you did. Use only the field names you were given. Search their other notes when it helps (is this a duplicate? what style do the existing cards use?).
 
-Key: "fields": {"<field name>": "<the whole new field HTML>", ...} — only the fields you change; {} for none.
+Key: "fields": {"<field name>": <change>, ...} — only the fields you change; {} for none. A change is either a list of edits [{"find": "<exact text from the field>", "replace": "<new text>"}, ...] or, for a field you write from scratch or mostly rewrite, the whole new field HTML as a string. Prefer edits: they are much faster to write and leave everything else untouched. Each "find" is copied exactly from the field's raw HTML (tags included), long enough to occur only once; to add text, find the text next to it and replace it with that text plus the new one. If a find doesn't match exactly once, that field is not changed.
 
 Deck rules, when given, take priority over everything else here (including the formatting guide) except the JSON reply format."""
 
@@ -53,10 +53,29 @@ def question_side_context(question: str, questions: list, deck_rules: list = ())
     return f"QUESTION SIDE\n\nCard's question:\n{question}{shown}{deck_rules_block(deck_rules)}"
 
 
+def apply_snippets(text: str, edits: list):
+    """The text with each (find, replace) applied in turn, or None when a find is empty or isn't in it exactly once."""
+    for find, replace in edits:
+        if not find or text.count(find) != 1:
+            return None
+        text = text.replace(find, replace)
+    return text
+
+
 def plan_field_edit(current: dict, proposed: dict) -> tuple:
-    """(changes, rejected): changes = fields that exist and actually differ; rejected = unknown field names."""
-    changes = {k: v for k, v in proposed.items() if k in current and v != current[k]}
-    return changes, [k for k in proposed if k not in current]
+    """(changes, unknown, failed): changes = fields that exist and actually differ (a proposal is the whole new field,
+    or a list of (find, replace) snippets applied to the current one); unknown = field names that don't exist;
+    failed = fields whose snippets did not each match once."""
+    changes, failed = {}, []
+    for k, v in proposed.items():
+        if k not in current:
+            continue
+        new = apply_snippets(current[k], v) if isinstance(v, list) else v
+        if new is None:
+            failed.append(k)
+        elif new != current[k]:
+            changes[k] = new
+    return changes, [k for k in proposed if k not in current], failed
 
 
 def search_block(query: str, notes: list, total: int, last: bool = False, error: str = "") -> str:

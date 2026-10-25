@@ -261,10 +261,24 @@ def test_answer_side_context_has_fields_and_review():
 def test_field_reply_and_plan():
     r = assistant_ops.parse_reply('```json\n{"reply": "Fixed.", "fields": {"Back": "B2", "Nope": "x", "Front": "Q"}}\n```')
     assert r["reply"] == "Fixed."
-    changes, unknown = note_chat.plan_field_edit({"Front": "Q", "Back": "B"}, r["fields"])
-    assert changes == {"Back": "B2"} and unknown == ["Nope"]
+    changes, unknown, failed = note_chat.plan_field_edit({"Front": "Q", "Back": "B"}, r["fields"])
+    assert changes == {"Back": "B2"} and unknown == ["Nope"] and failed == []
     with pytest.raises(ValueError):
         assistant_ops.parse_reply('{"fields": ["x"]}')
+
+
+def test_field_snippet_edits():
+    cur = {"Front": "Q", "Back": "<p>a</p><p>b</p><hr><b>Missed (D)</b>"}
+    r = assistant_ops.parse_reply('{"fields": {"Back": [{"find": "<p>b</p>", "replace": "<p>b</p><p>c</p>"}]}}')
+    assert r["fields"] == {"Back": [("<p>b</p>", "<p>b</p><p>c</p>")]}
+    changes, unknown, failed = note_chat.plan_field_edit(cur, r["fields"])
+    assert changes == {"Back": "<p>a</p><p>b</p><p>c</p><hr><b>Missed (D)</b>"} and not unknown and not failed
+    for bad in ("zzz", "p>", ""):  # not found, found twice, empty
+        edits = {"Back": [("<p>a</p>", "x"), (bad, "y")]}
+        assert note_chat.plan_field_edit(cur, edits) == ({}, [], ["Back"])
+    assert note_chat.plan_field_edit(cur, {"Front": [("Q", "Q")]}) == ({}, [], [])  # no change
+    with pytest.raises(ValueError):
+        assistant_ops.parse_reply('{"fields": {"Back": [{"find": "a"}]}}')
 
 
 def test_verdict_html_has_no_ask_box():

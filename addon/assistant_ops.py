@@ -79,6 +79,18 @@ def follow_up(blocks: dict, extra: str = "") -> str:
     return "\n\n".join(parts) + extra + "\n\nNow answer my last message."
 
 
+def field_change(name, v):
+    """A field's whole new content (str), or a list of (find, replace) edits to it."""
+    if not isinstance(v, list):
+        return str(v)
+    edits = []
+    for e in v:
+        if not isinstance(e, dict) or "find" not in e or "replace" not in e:
+            raise ValueError(f"'fields.{name}' edits need find and replace")
+        edits.append((str(e["find"]), str(e["replace"])))
+    return edits
+
+
 def parse_reply(text: str) -> dict:
     obj = parse_json_reply(text)
 
@@ -99,7 +111,7 @@ def parse_reply(text: str) -> dict:
         "read_decks": [str(d) for d in items("read_decks") if str(d).strip()],
         "per_card": obj.get("per_card") is True,
         "cards": [c for c in items("cards") if isinstance(c, dict)],
-        "fields": {str(k): str(v) for k, v in fields.items()},
+        "fields": {str(k): field_change(k, v) for k, v in fields.items()},
     }
 
 

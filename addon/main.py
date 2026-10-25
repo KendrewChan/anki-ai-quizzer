@@ -275,12 +275,14 @@ def apply_note_edit(nid: int, fields: dict, reply: str, say, initiator=None, on_
     """Write the field changes the AI asked for, as one undo step, and report through say(text, err). With no
     initiator every screen redraws itself; the reviewer passes itself and redraws in `on_saved`."""
     note = mw.col.get_note(nid)  # fresh: the Missed append or the editor may have saved in the meantime
-    changes, unknown = note_chat.plan_field_edit(dict(note.items()), fields)
+    changes, unknown, failed = note_chat.plan_field_edit(dict(note.items()), fields)
     reply = reply or ("Done." if changes else "No change.")
     if unknown:
         reply += f" (ignored unknown fields: {', '.join(unknown)})"
+    if failed:
+        reply += f" (not changed, text to replace not found exactly once: {', '.join(failed)})"
     if not changes:
-        say(reply, bool(unknown))
+        say(reply, bool(unknown or failed))
         return
     for name, value in changes.items():
         note[name] = value
@@ -374,16 +376,18 @@ def apply_new_note_edit(addcards, fields: dict, reply: str, say):
     if note is None:
         say("The note is gone.", True)
         return
-    changes, unknown = note_chat.plan_field_edit(dict(note.items()), fields)
+    changes, unknown, failed = note_chat.plan_field_edit(dict(note.items()), fields)
     reply = reply or ("Done." if changes else "No change.")
     if unknown:
         reply += f" (ignored unknown fields: {', '.join(unknown)})"
+    if failed:
+        reply += f" (not changed, text to replace not found exactly once: {', '.join(failed)})"
     if changes:
         for name, value in changes.items():
             note[name] = value
         addcards.editor.loadNote()
         reply += f" Changed: {', '.join(changes)}."
-    say(reply, bool(unknown) and not changes)
+    say(reply, bool(unknown or failed) and not changes)
 
 
 def append_missed(bullets: list):

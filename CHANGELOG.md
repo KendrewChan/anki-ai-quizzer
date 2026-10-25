@@ -4,6 +4,7 @@ What changed in each version, newest first. How the add-on works today is in [do
 
 ## Unreleased
 
+- Asking the chat to change the open note is faster on long notes: the AI now sends just the text to replace (`find` → `replace`) instead of rewriting the whole field. A snippet that doesn't match exactly once is not applied, and the reply says so. Writing a whole field is still allowed.
 - After grading, the verdict shows **Remember next time**: the top 3 (at most) points you missed in this review, a few words each, so a review that missed many points doesn't overload you. The full list stays under Missed and in the note.
 - With AI Study on but **Rewrite question** off (and no deck prompt), the card now shows as written with no answer box, since nothing is graded; Space or Show Answer just shows the answer. Cloze cards and decks with a deck prompt are unchanged.
 - The chat can move existing cards to another deck without losing their scheduling ("move the enzyme cards into Biology::Ch4", "split this deck into subdecks by topic"). A move is staged like an update, marked **MOVE from <deck>** in the Generate/Update tab, and on Submit the original card changes deck, keeping its review history, due date and interval (a card sitting in a filtered deck goes back to its home deck first). Before, the AI could only make new copies in the other deck, which started from scratch.
