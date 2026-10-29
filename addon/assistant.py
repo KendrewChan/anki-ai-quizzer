@@ -9,7 +9,7 @@ from collections import deque
 
 from aqt import mw
 
-from . import assistant_ops, generate_col, generate_ops, health, missed_today, note_chat
+from . import assistant_ops, generate_col, generate_ops, health, missed_today, note_chat, processes
 from .config_ops import settings_context
 from .generate_page import OpResult
 from .session import make_backend, model_for, provider_of, resolved_model
@@ -78,13 +78,21 @@ class Conversation:
         self.cwd = None
         self._actions = {}  # button key -> callable, for buttons under replies
         self._next_key = 0
+        self._generation = 0  # invalidates context callbacks when Clear or profile close happens
+        self._closed = False
         _ALL.add(self)
 
     # --- panel ---
 
     def send(self, mid, sel: str, text: str):
         """Queue the message with what the user has open now (the note it is about), and answer it in its turn."""
+        if self._closed or not processes.current():
+            return
+        generation, profile = self._generation, processes.generation()
+
         def done(ctx):
+            if self._closed or generation != self._generation or not processes.current(profile):
+                return
             if isinstance(ctx, str):
                 self.panel.reply(mid, ctx, True)
                 return
@@ -122,6 +130,7 @@ class Conversation:
 
     def clear(self):
         """Forget the conversation: stop the CLI (its memory goes with it) and anything being answered."""
+        self._generation += 1
         self.queue.clear()
         self.cancel()
         self._stop()
@@ -136,6 +145,7 @@ class Conversation:
 
     def close(self):
         """The chat's window is gone."""
+        self._closed = True
         self.clear()
         _ALL.discard(self)
 

@@ -132,6 +132,16 @@ def test_claude_system_prompt_goes_in_a_file(tmp_path):
         c.close()
 
 
+def test_make_backend_scopes_study_to_card_but_preserves_chat(tmp_path):
+    study = session.make_backend({"claude_path": "/x/claude"}, "S", str(tmp_path), lambda f: f())
+    chat = session.make_backend({"claude_path": "/x/claude"}, "S", str(tmp_path), lambda f: f(), web=True)
+    try:
+        assert study._card_scoped is True and chat._card_scoped is False
+    finally:
+        study.close()
+        chat.close()
+
+
 def test_codex_round_trips_non_ascii(codex):
     out = call(codex, "Explain → in \\(O(n \\log n)\\) — café, 中文 ✓")
     assert out["err"] is None and out["result"]["echo"] == "Explain → in \\(O(n \\log n)\\) — café, 中文 ✓"

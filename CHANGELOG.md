@@ -4,6 +4,10 @@ What changed in each version, newest first. How the add-on works today is in [do
 
 ## Unreleased
 
+- Fixed (2026-10-29): profile/app shutdown stops all add-on-owned CLI jobs, including Settings checks, login and updates, not just study/chat. macOS/Linux cleanup kills owned process groups and surviving children; late jobs and callbacks cannot start new processes after shutdown or a profile switch. Closed chats also reject delayed context callbacks.
+- Added (2026-10-29): Ferry models automatically accept an explicit queue-acceleration offer once per study or chat request, interrupting and sending `加速` with the same model. Plain queue notices and usage limits are not retried.
+- Fixed (2026-10-29): Claude study context is limited to the current card (preparation and grading share a process), and timed-out study generation is terminated so it cannot delay the next request. Chat history is unchanged.
+- Changed (2026-10-29): formatting context is a short guide plus one compact note template, without long examples, reducing prompt overhead for both studying and chat.
 - Fixed (2026-10-29): custom CLI model IDs no longer need a `claude-` prefix; catalog errors are shown immediately and startup probes drain diagnostic output instead of blocking. Invalid learned-state files no longer prevent startup.
 - Fixed (2026-10-29): reference-folder symlinks pointing outside that folder are skipped, and per-card batch replies cannot update cards outside the batch shown to the AI.
 - Asking the chat to change the open note is faster on long notes: the AI now sends just the text to replace (`find` → `replace`) instead of rewriting the whole field. A snippet that doesn't match exactly once is not applied, and the reply says so. Writing a whole field is still allowed.

@@ -4,7 +4,7 @@ import re
 
 from .textutil import STYLE_GUIDE, parse_json_reply
 
-SYSTEM_PROMPT = """You are a strict flashcard tutor inside Anki. The user studies one card at a time; this whole conversation is one study session.
+SYSTEM_PROMPT = """You are a strict flashcard tutor inside Anki. The user studies one card at a time; this conversation covers only the current card.
 
 What the user sees for a card: the card's own question (folded unless you open it), then your questions, each with ONE answer box. A question may have parts, listed under it and answered together in its box. Each question, or each part, can carry a hint shown as a "?" tooltip. It is all one page, read top to bottom, so shared context appears once — never repeat it in every question. The add-on numbers everything — never number anything yourself.
 

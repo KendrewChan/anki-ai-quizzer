@@ -1,6 +1,6 @@
 """AI backends. No Anki imports.
 
-- ClaudeSession: one long-running `claude -p` stream-json process per study session.
+- ClaudeSession: one `claude -p` stream-json process per study card, or per chat.
 - CodexBackend: one `codex exec` call per message (Codex has no long-running mode).
 Both are stateless per request: every prompt carries everything the model needs.
 """
@@ -16,7 +16,7 @@ import threading
 import uuid
 from collections import deque
 
-from . import state
+from . import processes, state
 
 RETRY_PROMPT = "Your last reply was not valid JSON. Reply again with the JSON object only."
 
@@ -65,6 +65,55 @@ CODEX_WEB_FLAGS = [a if a != 'web_search="disabled"' else 'web_search="live"' fo
 PROVIDERS = ("claude", "codex")  # the first one is the default
 CLAUDE_ALIASES = ("haiku", "sonnet", "opus", "fable")  # shorthand accepted by settings; discovery uses the CLI catalog
 LIMIT = re.compile(r"usage limit|rate limit|limit reached|hit your limit", re.I)
+
+# Match the Ferry mod: accelerate only when the gateway explicitly offers it, never on a usage limit.
+FERRY_MODEL = re.compile(r"^(?:claude-)?gpt-(?:5[.-]6|6(?:[.-]1)?)-")
+FERRY_QUEUE = re.compile(r"^TRAE 排队中：第 \d+ 位(?:（模型繁忙，轮到后自动开始）)?"
+                         r"(?: · 现在可以加速到(?:第 \d+ 位|不用排队)（模型不变）：打断后发送「加速」)?$")
+FERRY_WAITING = re.compile(r"^等待 TRAE 响应中（(?:已等 \d+ 秒，)?模型响应较慢）$")
+
+
+class _FerryQueue:
+    """Scan only leading queue notices, not quotes in an answer or a subagent's output."""
+
+    def __init__(self):
+        self.pending = ""
+        self.scanning = True
+        self.streamed = False
+
+    def feed(self, obj: dict) -> bool:
+        if not self.scanning or obj.get("parent_tool_use_id"):
+            return False
+        text = ""
+        if obj.get("type") == "stream_event":
+            event = obj.get("event") or {}
+            block, delta = event.get("content_block") or {}, event.get("delta") or {}
+            if block.get("type") in ("thinking", "tool_use") or delta.get("type") in ("thinking_delta", "input_json_delta"):
+                self.scanning = False
+            if delta.get("type") == "text_delta":
+                self.streamed = True
+                text = delta.get("text") or ""
+        elif obj.get("type") == "assistant" and not self.streamed:
+            blocks = (obj.get("message") or {}).get("content") or []
+            if any(b.get("type") in ("thinking", "tool_use") for b in blocks):
+                self.scanning = False
+            text = "".join(b.get("text") or "" for b in blocks if b.get("type") == "text") + "\n"
+        if not self.scanning:
+            return False
+        lines = (self.pending + text).split("\n")
+        self.pending = lines.pop()
+        for line in lines:
+            line = line.removesuffix("\r")
+            if FERRY_QUEUE.fullmatch(line):
+                if " · 现在可以加速到" in line:
+                    self.scanning = False
+                    return True
+            elif not FERRY_WAITING.fullmatch(line):
+                self.scanning = False
+                return False
+        if len(self.pending) > 4096:
+            self.scanning = False
+        return False
 
 
 def provider_of(cfg: dict) -> str:
@@ -154,6 +203,7 @@ def build_command(claude_path: str, model: str, prompt_file: str, web: bool = Fa
         "--input-format", "stream-json",
         "--output-format", "stream-json",
         "--verbose",
+        *(["--include-partial-messages"] if FERRY_MODEL.match(model) else []),
         "--effort", "medium",
         "--replay-user-messages",
         *(WEB_FLAGS if web else ISOLATION_FLAGS),
@@ -182,7 +232,7 @@ def make_backend(cfg: dict, system_prompt: str, cwd: str, dispatch, web: bool = 
         return CodexBackend(cmd, cwd, dispatch, system_prompt)
     cmd = build_command(find_cli("claude", cfg.get("claude_path", "")), model, system_prompt_file(cwd, system_prompt),
                         web)
-    return ClaudeSession(cmd, cwd, dispatch, model)
+    return ClaudeSession(cmd, cwd, dispatch, model, card_scoped=not web)
 
 
 class SessionError(Exception):
@@ -210,13 +260,14 @@ class _Backend:
         self._stderr = deque(maxlen=20)
         self._gen = 0  # bumped by stop(); stale jobs and callbacks are dropped
         self._job_gen = 0  # the generation of the job the worker is running
-        self._worker = threading.Thread(target=self._run, daemon=True)
-        self._worker.start()
+        self._closed = False
+        self._worker = processes.background(self._run)
 
     # --- public API (any thread) ---
 
     def request(self, card_id, prompt: str, parse, timeout: float, callback):
-        self._jobs.put((self._gen, card_id, prompt, parse, timeout, callback))
+        if not self._closed:
+            self._jobs.put((self._gen, card_id, prompt, parse, timeout, callback))
 
     def stop(self):
         """Kill the process and drop everything pending. The next request starts a fresh process."""
@@ -233,6 +284,9 @@ class _Backend:
         self.stop()
 
     def close(self):
+        if self._closed:
+            return
+        self._closed = True
         self.stop()
         self._jobs.put(None)
 
@@ -244,11 +298,12 @@ class _Backend:
             if job is None:
                 return
             gen, card_id, prompt, parse, timeout, callback = job
-            if gen != self._gen:
+            if self._closed or gen != self._gen:
                 continue
             self._job_gen = gen
             result, error = None, None
             try:
+                self._prepare_request(card_id)
                 try:
                     result = parse(self._exchange(prompt, timeout))
                 except ValueError:
@@ -267,7 +322,8 @@ class _Backend:
             if gen == self._gen:
                 callback(card_id, result, error)
 
-        self._dispatch(fire)
+        if not self._closed:
+            processes.on_main(self._dispatch, fire)
 
     def _retry_prompt(self, prompt: str) -> str:
         """Stateless backends must resend the original prompt with the retry note."""
@@ -283,7 +339,7 @@ class _Backend:
 
     def _cancelled(self) -> bool:
         """stop()/interrupt() ran since the worker took the current job."""
-        return self._job_gen != self._gen
+        return self._closed or not processes.current() or self._job_gen != self._gen
 
     def _started(self, proc):
         """Register a just-started process; stop()/close() may have run while it started and found nothing to kill."""
@@ -292,19 +348,25 @@ class _Backend:
             self._kill()
             raise SessionError("crashed", "stopped.")
 
+    def _prepare_request(self, card_id):
+        pass
+
     def _exchange(self, prompt: str, timeout: float) -> str:
         raise NotImplementedError
 
 
 class ClaudeSession(_Backend):
-    """One long-running claude process; the conversation persists only to save startup time.
+    """Study keeps a conversation only for one card; chat keeps its conversation until closed.
 
     A message's reply is the first result after the CLI replays that message: earlier results belong to requests that
     timed out or to turns the CLI started by itself (a background subagent finishing starts one, unasked).
     """
 
-    def __init__(self, cmd: list, cwd: str, dispatch, model: str = ""):
+    def __init__(self, cmd: list, cwd: str, dispatch, model: str = "", card_scoped: bool = False):
+        self._card_scoped = card_scoped
+        self._card_id = None
         self._model = model
+        self._accelerated = False
         self._lines = None
         self._write = threading.Lock()  # stdin: the worker sends prompts, interrupt() comes from the caller's thread
         self._interrupts = 0
@@ -332,27 +394,38 @@ class ClaudeSession(_Backend):
         except (BrokenPipeError, OSError, ValueError):
             self._kill()
 
+    def _prepare_request(self, card_id):
+        self._accelerated = False  # one attempt per queued request, including its JSON-repair retry
+        if self._card_scoped and card_id != self._card_id:
+            self._kill()
+            self._card_id = card_id
+
     def _retry_prompt(self, prompt: str) -> str:
         return RETRY_PROMPT  # the original prompt is already in this conversation
+
+    def _send(self, proc, *messages):
+        try:
+            with self._write:
+                if self._cancelled():  # an interrupt sent before this write would miss it: don't start the turn
+                    raise SessionError("crashed", "stopped.")
+                proc.stdin.write("".join(json.dumps(msg) + "\n" for msg in messages))
+                proc.stdin.flush()
+        except (BrokenPipeError, OSError, ValueError):
+            self._drop_proc(proc)
+            raise SessionError("crashed", "Claude session crashed; it will restart on the next card. " + self._stderr_tail())
 
     def _exchange(self, prompt: str, timeout: float) -> str:
         proc, lines = self._ensure_proc()
         mine = str(uuid.uuid4())
         started = False  # the CLI has replayed this message: the next result is its reply
-        msg = {"type": "user", "message": {"role": "user", "content": prompt}, "uuid": mine}
-        try:
-            with self._write:
-                if self._cancelled():  # an interrupt sent before this write would miss it: don't start the turn
-                    raise SessionError("crashed", "stopped.")
-                proc.stdin.write(json.dumps(msg) + "\n")
-                proc.stdin.flush()
-        except (BrokenPipeError, OSError, ValueError):
-            self._drop_proc(proc)
-            raise SessionError("crashed", "Claude session crashed; it will restart on the next card. " + self._stderr_tail())
+        ferry = _FerryQueue() if FERRY_MODEL.match(self._model) and prompt.strip() != "加速" and not self._accelerated else None
+        self._send(proc, {"type": "user", "message": {"role": "user", "content": prompt}, "uuid": mine})
         while True:
             try:
                 line = lines.get(timeout=timeout)
             except queue.Empty:
+                if self._card_scoped:
+                    self._drop_proc(proc)
                 raise SessionError("timeout", "AI timed out.")
             if line is None:
                 self._drop_proc(proc)
@@ -365,6 +438,15 @@ class ClaudeSession(_Backend):
                 remember_model("claude", self._model, obj["model"])
             if obj.get("type") == "user" and obj.get("uuid") == mine:
                 started = True
+            if started and ferry is not None and ferry.feed(obj):
+                self._accelerated = True
+                ferry = None
+                mine, started = str(uuid.uuid4()), False
+                # Ferry removes the queue-only reply: 加速 resumes the original request with the same model.
+                self._send(proc, {"type": "control_request", "request_id": str(uuid.uuid4()),
+                                  "request": {"subtype": "interrupt"}},
+                           {"type": "user", "message": {"role": "user", "content": "加速"}, "uuid": mine})
+                continue  # discard the interrupted turn's result; wait for the new message's replay
             if obj.get("type") != "result" or not started:
                 continue
             text = obj.get("result") or obj.get("subtype") or ""
@@ -377,7 +459,7 @@ class ClaudeSession(_Backend):
         if proc is not None and proc.poll() is None:
             return proc, self._lines
         try:
-            proc = subprocess.Popen(
+            proc = processes.popen(
                 self._cmd, cwd=self._cwd, text=True, bufsize=1,
                 stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=_claude_env(), **PROC_KW,
             )
@@ -415,7 +497,7 @@ class CodexBackend(_Backend):
 
     def _exchange(self, prompt: str, timeout: float) -> str:
         try:
-            proc = subprocess.Popen(
+            proc = processes.popen(
                 self._cmd, cwd=self._cwd, text=True,
                 stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, **PROC_KW,
             )
@@ -460,20 +542,7 @@ def parse_codex_output(out: str, err: str, returncode) -> str:
 
 
 def _terminate(proc):
-    if proc.poll() is not None:
-        return
-    try:
-        proc.stdin.close()
-    except OSError:
-        pass
-    if os.name == "nt":  # npm's claude.cmd/codex.cmd: killing cmd.exe alone leaves the real CLI running
-        subprocess.run(["taskkill", "/F", "/T", "/PID", str(proc.pid)], capture_output=True, **PROC_KW)
-    else:
-        proc.terminate()
-    try:
-        proc.wait(timeout=3)
-    except subprocess.TimeoutExpired:
-        proc.kill()
+    processes.terminate(proc)
 
 
 # --- login state per provider (the add-on never handles credentials; the CLIs do) ---
@@ -498,7 +567,7 @@ def parse_auth_status(provider: str, returncode: int, out: str) -> tuple:
 
 def read_auth_status(provider: str, path: str, timeout: float = 20) -> tuple:
     """Run the provider's status command -> (logged_in, text). Codex prints its status on stderr."""
-    r = subprocess.run(auth_status_command(provider, path), capture_output=True, text=True,
+    r = processes.run(auth_status_command(provider, path), capture_output=True, text=True,
                        timeout=timeout, stdin=subprocess.DEVNULL, **PROC_KW)
     out = r.stdout if r.stdout.strip() else r.stderr
     return parse_auth_status(provider, r.returncode, out)
@@ -582,7 +651,7 @@ def _watch(name: str, cmd: list, cwd: str, stdin_text: str, stream: str, timeout
 
     Claude's stream-json input keeps stdin open (close_stdin=False); codex reads the whole prompt first.
     """
-    proc = subprocess.Popen(cmd, cwd=cwd, text=True, stdin=subprocess.PIPE,
+    proc = processes.popen(cmd, cwd=cwd, text=True, stdin=subprocess.PIPE,
                             stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                             env=_claude_env() if name == "claude" else None, **PROC_KW)
     found, seen, errors = [], deque(maxlen=5), deque(maxlen=5)
@@ -626,7 +695,7 @@ def _watch(name: str, cmd: list, cwd: str, stdin_text: str, stream: str, timeout
 def list_models(provider: str, path: str, cwd: str, timeout: float = 30) -> list:
     """[(value, label)] from the CLI's live catalog, without asking an AI model."""
     if provider == "codex":
-        r = subprocess.run([path, "debug", "models"], capture_output=True, text=True,
+        r = processes.run([path, "debug", "models"], capture_output=True, text=True,
                            timeout=timeout, stdin=subprocess.DEVNULL, **PROC_KW)
         models = json.loads(r.stdout).get("models") or []
         listed = sorted((m for m in models if m.get("visibility") == "list"), key=lambda m: m.get("priority", 0))

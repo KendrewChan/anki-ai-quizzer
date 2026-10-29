@@ -10,10 +10,10 @@ from aqt import gui_hooks, mw
 from aqt.deckbrowser import DeckBrowser
 from aqt.operations.note import update_note
 from aqt.overview import Overview
-from aqt.qt import QAction, QDialogButtonBox
+from aqt.qt import QAction, QApplication, QDialogButtonBox
 from aqt.reviewer import Reviewer
 
-from . import assistant, config_ops, errorlog, grading, health, missed, note_chat, state, ui
+from . import assistant, config_ops, errorlog, grading, health, missed, note_chat, processes, state, ui
 from .ai_window import AIWindow
 from .assistant import Context, Conversation
 from .tab_page import deck_ids, load_config, migrate_once
@@ -433,9 +433,14 @@ def on_config_changed():
 
 
 def on_profile_close():
-    end_session()
-    S.window.close()
-    assistant.close_all()
+    error = None
+    for close in (processes.shutdown, end_session, S.window.settings.stop_jobs, S.window.close, assistant.close_all):
+        try:
+            close()
+        except Exception as e:
+            error = e
+    if error is not None:
+        raise error
 
 
 # --- toggle + AI Window link ---
@@ -508,4 +513,6 @@ def setup():
     gui_hooks.webview_did_receive_js_message.append(on_js_message)
     gui_hooks.reviewer_will_end.append(end_session)
     gui_hooks.profile_will_close.append(on_profile_close)
+    gui_hooks.profile_did_open.append(processes.resume)
+    QApplication.instance().aboutToQuit.connect(processes.shutdown)
     gui_hooks.sync_did_finish.append(on_sync_finished)

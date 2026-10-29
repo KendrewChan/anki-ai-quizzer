@@ -6,7 +6,7 @@ Study in the Anki reviewer with an AI tutor (Claude Code or Codex): it turns eac
 
 - Anki desktop (built and tested on 26.9.2, macOS).
 - One AI CLI, installed and logged in with **your own** subscription — the add-on runs it locally and never sees your credentials:
-  - [Claude Code](https://claude.com/claude-code) (`claude auth login`) — default, fastest (keeps one process open per study session), or
+  - [Claude Code](https://claude.com/claude-code) (`claude auth login`) — default (preparation and grading share one process per card), or
   - [Codex CLI](https://github.com/openai/codex) (`codex login`, ChatGPT plan) — ~6 s per card.
 
 ## Install
@@ -42,6 +42,8 @@ Tell the chat what you want in plain words — "use opus", "give me 90 seconds t
 
 **Custom gateways:** the add-on reads the CLI's gateway URL and authentication environment settings from its user `settings.json`, so a model selected there can connect even when Anki starts from the Dock/Start menu. Other user environment settings, hooks and plugins remain disabled. A local gateway must be running when you study or chat. Custom model IDs need not start with `claude-`; use the exact ID from the dropdown, not its display name.
 
+**Ferry models:** studying and chat automatically accept Ferry's explicit queue-acceleration offer by interrupting and sending `加速`, once per request. The model and original task stay the same. This is not a retry for usage limits, and a queue without an acceleration offer still waits normally. No separate mod or setting is needed.
+
 **Windows login:** **Log in** opens a Claude Code window. Sign in in your browser (if it doesn't open, use the link in that window), and paste the code into that window if it asks for one.
 
 ## Browse window
@@ -72,7 +74,9 @@ Open **🤖 AI Window → ⚙ Settings**: it checks your AI CLI on open. If some
 
 ## Notes
 
-- Studying uses your own plan's usage (Claude or ChatGPT). Grading keeps one `claude` process open per review session; Codex starts one per message. Each chat keeps its own (read-only file tools, web search and web fetch, and with Claude read-only reviewer subagents, are its only tools).
+- Studying uses your own plan's usage (Claude or ChatGPT). Claude preparation and grading share one process for the current card; a different card starts fresh, so earlier cards do not accumulate in context. Timed-out study generation is stopped before the next request. Codex starts one process per message. Each chat keeps its own conversation (read-only file tools, web search and web fetch, and with Claude read-only reviewer subagents, are its only tools).
+- Formatting context is a short shared guide plus one optional note template, without long examples.
+- Closing a profile or quitting Anki normally stops all add-on-owned CLI jobs, including Settings checks, login and updates. On macOS/Linux, surviving CLI children are stopped too. Other independently started CLI sessions and the gateway are not touched. Force Quit or a crash may bypass cleanup; closing only the AI Window still preserves its chat.
 - Built and used on macOS. Windows and Linux are covered by automated tests but not yet tried in Anki itself. If the CLI isn't found, tell the chat its path ("claude path is /path/to/claude", or the same for codex).
 
 ## Development
