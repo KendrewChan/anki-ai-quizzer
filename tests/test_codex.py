@@ -106,6 +106,19 @@ def test_claude_command_omits_model_when_default():
     assert session.build_command("/x/claude", "opus", "S")[-4:-2] == ["--model", "opus"]
 
 
+@pytest.mark.parametrize("web", [False, True])
+def test_claude_commands_use_medium_effort(web):
+    cmd = session.build_command("/x/claude", "claude-example-model[1m]", "S", web=web)
+    assert cmd.count("--effort") == 1 and cmd[cmd.index("--effort") + 1] == "medium"
+    assert "--effort" not in session.build_codex_command("/x/codex", "", "/tmp/w", web=web)
+
+
+def test_claude_command_keeps_custom_model_model_id_and_context_suffix():
+    model = "claude-example-model[1m]"
+    cmd = session.build_command("/x/claude", model, "S")
+    assert cmd[cmd.index("--model") + 1] == model
+
+
 def test_claude_system_prompt_goes_in_a_file(tmp_path):
     """Not an argument: Windows' cmd.exe (npm's claude.cmd) cuts arguments at the first newline."""
     c = session.make_backend({"claude_path": "/x/claude"}, "line one\nline two → ✓", str(tmp_path), lambda f: f())
@@ -117,6 +130,16 @@ def test_claude_system_prompt_goes_in_a_file(tmp_path):
         assert session.system_prompt_file(str(tmp_path), "line one\nline two → ✓") == path  # same prompt, same file
     finally:
         c.close()
+
+
+def test_make_backend_scopes_study_to_card_but_preserves_chat(tmp_path):
+    study = session.make_backend({"claude_path": "/x/claude"}, "S", str(tmp_path), lambda f: f())
+    chat = session.make_backend({"claude_path": "/x/claude"}, "S", str(tmp_path), lambda f: f(), web=True)
+    try:
+        assert study._card_scoped is True and chat._card_scoped is False
+    finally:
+        study.close()
+        chat.close()
 
 
 def test_codex_round_trips_non_ascii(codex):
@@ -251,9 +274,124 @@ def test_list_models_codex_uses_visible_catalog_in_priority_order(tmp_path):
         ("model-a", "model-a"), ("model-b", "model-b")]
 
 
-def test_list_models_claude_resolves_each_alias(tmp_path):
+def test_list_models_claude_uses_catalog_including_custom_model(tmp_path):
     opts = session.list_models("claude", _exe(tmp_path, "claude", FAKE_CLAUDE), str(tmp_path))
-    assert opts == [(a, f"fake-claude-model ({a})") for a in session.CLAUDE_ALIASES]
+    assert opts == [("sonnet", "Sonnet"), ("claude-example-model[1m]", "Example gateway model 1M")]
+
+
+def test_claude_catalog_sends_only_initialize_and_ignores_unrelated_events(tmp_path):
+    path = make_exe(tmp_path, "catalog", body='''
+import json
+assert "--safe-mode" in sys.argv and "--strict-mcp-config" in sys.argv
+assert sys.argv[sys.argv.index("--setting-sources") + 1] == ""
+assert sys.argv[sys.argv.index("--tools") + 1] == ""
+request = json.loads(sys.stdin.readline())
+assert request["type"] == "control_request" and request["request"] == {"subtype": "initialize"}
+sys.stderr.write("diagnostic\\n" * 100000)
+sys.stderr.flush()
+print("[]", flush=True)
+response = {"subtype": "success", "request_id": "unrelated", "response": {"models": []}}
+print(json.dumps({"type": "control_response", "response": response}), flush=True)
+response.update(request_id=request["request_id"], response={"models": [{"value": "claude-custom"}]})
+print(json.dumps({"type": "control_response", "response": response}), flush=True)
+assert not sys.stdin.readline(), "model discovery must not send a user prompt"
+''')
+    assert session.list_models("claude", path, str(tmp_path), timeout=5) == [("claude-custom", "claude-custom")]
+
+
+def test_claude_catalog_loads_only_picker_and_allowlist(tmp_path, monkeypatch):
+    import json
+    config_dir = tmp_path / "cli-config"
+    config_dir.mkdir()
+    model = "claude-example-model[1m]"
+    picker = {"options": [{"model": model, "label": "Example gateway model 1M"}], "replaceBuiltInOptions": True}
+    (config_dir / "settings.json").write_text(json.dumps({
+        "modelPicker": picker, "availableModels": [model],
+        "env": {"UNRELATED_SETTING": "must not load"}, "hooks": {"SessionStart": []},
+        "enabledPlugins": {"example": True},
+    }), encoding="utf-8")
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(config_dir))
+    path = make_exe(tmp_path, "catalog", body='''
+import json
+with open(sys.argv[sys.argv.index("--settings") + 1], encoding="utf-8") as f:
+    settings = json.load(f)
+assert set(settings) == {"modelPicker", "availableModels"}
+assert settings["modelPicker"]["replaceBuiltInOptions"] is True
+assert "--safe-mode" in sys.argv
+assert sys.argv[sys.argv.index("--setting-sources") + 1] == ""
+request = json.loads(sys.stdin.readline())
+models = [{"value": m["model"], "displayName": m["label"]} for m in settings["modelPicker"]["options"]
+          if m["model"] in settings["availableModels"]]
+print(json.dumps({"type": "control_response", "response": {
+    "subtype": "success", "request_id": request["request_id"], "response": {"models": models}}}), flush=True)
+''')
+    assert session.list_models("claude", path, str(tmp_path)) == [(model, "Example gateway model 1M")]
+    assert not list(tmp_path.glob("models-*.json"))  # temporary picker settings are removed after discovery
+    assert "--settings" not in session.build_command(path, model, "S")  # studying still loads no user settings
+
+
+@pytest.mark.parametrize("contents", ["invalid json", "[]", "{}"])
+def test_claude_catalog_works_with_invalid_or_empty_settings(tmp_path, monkeypatch, contents):
+    config_dir = tmp_path / "cli-config"
+    config_dir.mkdir()
+    (config_dir / "settings.json").write_text(contents, encoding="utf-8")
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(config_dir))
+    assert session.list_models("claude", _exe(tmp_path, "claude", FAKE_CLAUDE), str(tmp_path))
+
+
+@pytest.mark.parametrize("web", [False, True])
+def test_claude_requests_and_probes_use_configured_transport(tmp_path, monkeypatch, web):
+    import json
+    config_dir = tmp_path / "cli-config"
+    config_dir.mkdir()
+    (config_dir / "settings.json").write_text(json.dumps({"env": {
+        "ANTHROPIC_BASE_URL": "http://localhost:12345", "ANTHROPIC_API_KEY": "test-only",
+        "ANTHROPIC_AUTH_TOKEN": "", "UNRELATED_SETTING": "must not load",
+    }}), encoding="utf-8")
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(config_dir))
+    for key in ("ANTHROPIC_BASE_URL", "ANTHROPIC_API_KEY", "UNRELATED_SETTING"):
+        monkeypatch.delenv(key, raising=False)  # Anki launched from the Dock
+    monkeypatch.setenv("ANTHROPIC_AUTH_TOKEN", "inherited-test-token")
+    body = '''
+import os
+import runpy
+assert os.environ["ANTHROPIC_BASE_URL"] == "http://localhost:12345"
+assert os.environ["ANTHROPIC_API_KEY"] == "test-only"
+assert os.environ["ANTHROPIC_AUTH_TOKEN"] == ""
+assert "UNRELATED_SETTING" not in os.environ
+assert "--safe-mode" in sys.argv and "test-only" not in sys.argv and "--settings" not in sys.argv
+assert sys.argv[sys.argv.index("--effort") + 1] == "medium"
+'''
+    path = make_exe(tmp_path, "transport", body=body + f"\nrunpy.run_path({FAKE_CLAUDE!r}, run_name='__main__')")
+    cfg = {"claude_path": path, "models": {"claude": "claude-example-model[1m]"}}
+    backend = session.make_backend(cfg, "S", str(tmp_path), lambda f: f(), web=web)
+    try:
+        result = call(backend, "routing check")
+        assert result["err"] is None and result["result"]["echo"] == "routing check"
+    finally:
+        backend.close()
+    assert session.probe_model("claude", path, session.model_for(cfg), str(tmp_path)) == "fake-claude-model"
+
+
+def test_claude_env_preserves_inherited_transport_without_config(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_BASE_URL", "http://localhost:12345")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-only")
+    assert session._claude_env() == dict(os.environ)
+
+
+def test_claude_catalog_error_is_reported_without_waiting_for_timeout(tmp_path):
+    import time
+    path = make_exe(tmp_path, "catalog", body='''
+import json
+request = json.loads(sys.stdin.readline())
+print(json.dumps({"type": "control_response", "response": {
+    "subtype": "error", "request_id": request["request_id"], "error": "catalog unavailable"}}), flush=True)
+sys.stdin.read()
+''')
+    started = time.monotonic()
+    with pytest.raises(SessionError, match="catalog unavailable"):
+        session.list_models("claude", path, str(tmp_path), timeout=10)
+    assert time.monotonic() - started < 5
 
 
 def test_settings_prompt_carries_model_in_use_and_no_guessing_rule():

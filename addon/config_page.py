@@ -4,12 +4,11 @@ import html
 import json
 import os
 import subprocess
-import threading
 from collections import deque
 
 from aqt import mw
 
-from . import config_ops, tab_page
+from . import config_ops, processes, tab_page
 from .tab_page import Tab, deck_ids
 from .fixes import Fixer
 from .session import (PROC_KW, PROVIDER_LABELS, auth_command, find_cli, list_models, model_for, probe_model,
@@ -100,6 +99,10 @@ class ConfigPage(Tab):
         self.selected = None  # full deck name chosen in the Deck Settings tree
         self._probing = set()  # (provider, model) lookups in flight
         self._probe_failed = set()  # lookups that failed (e.g. CLI not installed): not retried until config changes
+
+    def stop_jobs(self):
+        self._probing.clear()
+        self._probe_failed.clear()
 
     # --- the interface fixes.Fixer uses (cfg() comes from ChatPage) ---
 
@@ -192,9 +195,9 @@ class ConfigPage(Tab):
                 ok, text = read_auth_status(provider, path)
             except Exception as e:  # missing binary, bad JSON, timeout — show it, don't crash the page
                 ok, text = False, f"unknown ({e.__class__.__name__}: {e})"
-            mw.taskman.run_on_main(lambda: self._set_auth(ok, text))
+            processes.on_main(mw.taskman.run_on_main,lambda: self._set_auth(ok, text))
 
-        threading.Thread(target=work, daemon=True).start()
+        processes.background(work)
 
     def _load_models(self):
         """Fill the Model dropdown with what the CLI offers right now (current model stays first)."""
@@ -213,11 +216,11 @@ class ConfigPage(Tab):
             except Exception as e:
                 options, error = [], f"couldn't load models: {e}"
             current = resolved_model(provider, configured) or configured
-            options = [(v, label) for v, label in options if v != configured and label.split(" ")[0] != current]
-            mw.taskman.run_on_main(lambda: self.eval(
+            options = [(v, label) for v, label in options if v not in (configured, current)]
+            processes.on_main(mw.taskman.run_on_main,lambda: self.eval(
                 f"window.aiCfg && aiCfg.setModels({json.dumps(options)}, {json.dumps(error)});"))
 
-        threading.Thread(target=work, daemon=True).start()
+        processes.background(work)
 
     def _model_name(self, provider: str, path: str, configured: str) -> str:
         """The real model id (saved by session.py whenever a CLI reports it); looked up in the background once."""
@@ -244,9 +247,9 @@ class ConfigPage(Tab):
                         self._probe_failed.add(key)
                     self._update(None)
 
-                mw.taskman.run_on_main(done)
+                processes.on_main(mw.taskman.run_on_main,done)
 
-            threading.Thread(target=work, daemon=True).start()
+            processes.background(work)
             return "checking…"
         return configured or "checking…"
 
@@ -271,11 +274,11 @@ class ConfigPage(Tab):
         def work():
             try:
                 if console:
-                    r = subprocess.run(auth_command(provider, path, action), timeout=600,
+                    r = processes.run(auth_command(provider, path, action), timeout=600,
                                        creationflags=subprocess.CREATE_NEW_CONSOLE)
                     msg = None if r.returncode == 0 else f"exit code {r.returncode}"
                 else:
-                    r = subprocess.run(auth_command(provider, path, action), capture_output=True, text=True,
+                    r = processes.run(auth_command(provider, path, action), capture_output=True, text=True,
                                        timeout=300, stdin=subprocess.DEVNULL, **PROC_KW)
                     msg = None if r.returncode == 0 else (r.stderr or r.stdout).strip()[-300:]
             except Exception as e:
@@ -287,9 +290,9 @@ class ConfigPage(Tab):
                     self.say(f"{action} failed: {msg} — try `{cmd}` in a terminal.", err=True)
                 self._refresh_auth()
 
-            mw.taskman.run_on_main(done)
+            processes.on_main(mw.taskman.run_on_main,done)
 
-        threading.Thread(target=work, daemon=True).start()
+        processes.background(work)
 
     # --- rendering ---
 

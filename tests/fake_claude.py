@@ -35,8 +35,16 @@ def read():
     for line in sys.stdin:
         obj = json.loads(line)
         if obj.get("type") == "control_request":
-            interrupted.set()
-            emit({"type": "control_response", "response": {"subtype": "success", "request_id": obj["request_id"]}})
+            if obj["request"]["subtype"] == "initialize":
+                emit({"type": "control_response", "response": {
+                    "subtype": "success", "request_id": obj["request_id"], "response": {"models": [
+                        {"value": "sonnet", "displayName": "Sonnet", "description": "Claude model"},
+                        {"value": "claude-example-model[1m]", "displayName": "Example gateway model 1M",
+                         "description": "Custom model"},
+                    ]}}})
+            else:
+                interrupted.set()
+                emit({"type": "control_response", "response": {"subtype": "success", "request_id": obj["request_id"]}})
         else:
             messages.put(obj)
     messages.put(None)
@@ -44,6 +52,8 @@ def read():
 
 threading.Thread(target=read, daemon=True).start()
 turn = 0
+ferry_request = ""
+ferry_offer = "TRAE 排队中：第 100 位（模型繁忙，轮到后自动开始） · 现在可以加速到不用排队（模型不变）：打断后发送「加速」\n"
 while True:
     obj = messages.get()
     if obj is None:
@@ -57,6 +67,22 @@ while True:
     if REPLAY:
         emit({"type": "user", "message": obj["message"], "uuid": obj.get("uuid"), "isReplay": True})
     interrupted.clear()
+    if content.startswith("FERRY_") or content == "加速":
+        notice = ferry_offer if content != "FERRY_NO_OFFER" else "TRAE 排队中：第 100 位（模型繁忙，轮到后自动开始）\n"
+        for chunk in (notice[:30], notice[30:]):
+            emit({"type": "stream_event", "event": {"type": "content_block_delta",
+                  "delta": {"type": "text_delta", "text": chunk}}})
+        if content == "加速":
+            text = "not JSON" if ferry_request == "FERRY_BADJSON" else json.dumps({"echo": ferry_request, "accelerations": 1})
+            emit({"type": "result", "is_error": False, "result": text})
+        else:
+            ferry_request = content
+            interrupted.wait(5)
+            emit({"type": "result", "is_error": True, "result": "interrupted"})
+        continue
+    if ferry_request == "FERRY_BADJSON" and "not valid JSON" in content:
+        emit({"type": "stream_event", "event": {"type": "content_block_delta",
+              "delta": {"type": "text_delta", "text": ferry_offer}}})
     m = re.search(r"SLEEP:([\d.]+)", content)
     if m and interrupted.wait(float(m.group(1))):
         emit({"type": "result", "subtype": "error_during_execution", "is_error": True, "result": ""})

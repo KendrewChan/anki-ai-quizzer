@@ -43,6 +43,17 @@ def test_read_folder_text_only(desk):
     assert "2 text files" in g.ref_summary(refs) and "pic.png" in g.ref_summary(refs)
 
 
+def test_reference_folder_skips_symlink_outside_selected_folder(desk):
+    link = desk / "notes" / "outside.txt"
+    try:
+        link.symlink_to(desk.parent / "outside.txt")
+    except OSError:
+        pytest.skip("symlink creation is not permitted")
+    refs = g.read_references(str(desk / "notes"), desk)
+    assert "outside.txt" in refs["skipped"]
+    assert "outside.txt" not in [name for name, _ in refs["files"]]
+
+
 def test_read_single_file_and_truncation(desk, monkeypatch):
     refs = g.read_references(str(desk / "notes" / "a.md"), desk)
     assert refs["files"] == [("a.md", "# Cells\nMitochondria make ATP.")]
@@ -121,6 +132,22 @@ def test_chunk_notes_batches_each_card_once():
     loaded = {"A": [_note(1), _note(2), _note(3)], "A::Sub": [_note(3), _note(4)]}  # 3 is listed under both decks
     assert [[n["id"] for n in b] for b in g.chunk_notes(loaded, 2)] == [[1, 2], [3, 4]]
     assert g.chunk_notes({}, 2) == []
+
+
+def test_batch_action_validation_rejects_cards_not_shown_in_that_batch():
+    loaded = {"A": [_note(1, "A"), _note(2, "A"), _note(3, "A")], "Other": [_note(4, "Other")]}
+    chunks = g.chunk_notes({"A": loaded["A"]}, 2)
+    visible = g.cards_for_batch(loaded, (1, chunks))
+    assert visible == {"A": [loaded["A"][2]]}
+    existing = {n["id"]: n for notes in visible.values() for n in notes}
+    ops, rejected = g.plan_changes([
+        {"update": {"note_id": 1, "fields": {"Front": "changed"}}},
+        {"update": {"note_id": 3, "fields": {"Front": "changed"}}},
+        {"update": {"note_id": 4, "fields": {"Front": "changed"}}},
+    ], ["A", "Other"], existing, [])
+    assert len(ops) == 1 and ops[0][1]["id"] == 3
+    assert len(rejected) == 2
+    assert g.cards_for_batch(loaded, None) == loaded
 
 
 def test_batch_line_names_the_batch():

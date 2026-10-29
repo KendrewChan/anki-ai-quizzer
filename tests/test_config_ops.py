@@ -25,7 +25,7 @@ def test_set_model_and_timeout_logged():
 
 
 @pytest.mark.parametrize("change,msg", [
-    ({"set": {"model": "gpt-4"}}, "unknown model"),
+    ({"set": {"model": "model display name"}}, "unknown model"),
     ({"set": {"ask_timeout_s": 2}}, "between 5 and 600"),
     ({"set": {"missed_append": "maybe"}}, "true or false"),
     ({"set": {"sharp_questions": False}}, "unknown setting"),
@@ -51,9 +51,10 @@ def test_claude_path_must_be_executable():
     assert new["claude_path"] == "/bin/claude" and "not an executable" in log[0]
 
 
-def test_full_model_id_accepted():
-    new, _, _, _ = apply([{"set": {"model": "claude-opus-5-5"}}])
-    assert new["models"]["claude"] == "claude-opus-5-5"
+@pytest.mark.parametrize("model", ["claude-opus-5-5", "claude-example-model[1m]", "example-model[1m]"])
+def test_full_model_id_accepted(model):
+    new, _, _, _ = apply([{"set": {"model": model}}])
+    assert new["models"]["claude"] == model
 
 
 def test_custom_add_and_remove():

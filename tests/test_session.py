@@ -46,6 +46,37 @@ def test_reply_parsed_and_context_kept_across_requests(sess):
     assert b["result"]["n"] == 2  # same process, same conversation
 
 
+def test_study_reuses_process_for_one_card_only(tmp_path):
+    s = ClaudeSession(FAKE, str(tmp_path), lambda fn: fn(), card_scoped=True)
+    try:
+        assert call(s, "prepare", card_id=7)["result"]["n"] == 1
+        assert call(s, "grade", card_id=7)["result"]["n"] == 2
+        assert call(s, "next card", card_id=8)["result"]["n"] == 1
+        assert call(s, "review card again", card_id=7)["result"]["n"] == 1
+    finally:
+        s.close()
+
+
+def test_study_timeout_kills_generation_before_next_request(tmp_path):
+    s = ClaudeSession(FAKE, str(tmp_path), lambda fn: fn(), card_scoped=True)
+    try:
+        assert call(s, "SLEEP:5", timeout=0.3)["err"].kind == "timeout"
+        assert s._proc is None
+        nxt = call(s, "grade after failed preparation", timeout=2)
+        assert nxt["err"] is None and nxt["result"]["n"] == 1
+    finally:
+        s.close()
+
+
+def test_study_bad_json_retry_keeps_current_card_context(tmp_path):
+    s = ClaudeSession(FAKE, str(tmp_path), lambda fn: fn(), card_scoped=True)
+    try:
+        r = call(s, "BADJSON")
+        assert r["err"] is None and r["result"] == {"echo": RETRY_PROMPT, "n": 2}
+    finally:
+        s.close()
+
+
 def test_timeout_then_late_reply_is_discarded(sess):
     t = call(sess, "SLEEP:1", timeout=0.3)
     assert t["err"].kind == "timeout"

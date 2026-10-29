@@ -9,7 +9,7 @@ TIMEOUT_RANGE = (5, 600)
 
 SETTINGS = {
     "provider": "which AI runs the tutor: \"claude\" (Claude Code CLI, Claude subscription) or \"codex\" (OpenAI Codex CLI, ChatGPT subscription)",
-    "model": "model for the CURRENT provider (each provider remembers its own); \"\" = the provider's default. claude: haiku, sonnet, opus, fable or a claude-… id. codex: an OpenAI model id",
+    "model": "model id for the CURRENT provider (each provider remembers its own); \"\" = the provider's default. Use the Model dropdown for the live CLI catalog",
     "ask_timeout_s": "seconds to wait for the rewritten question (5-600)",
     "grade_timeout_s": "seconds to wait for a grade (5-600)",
     "missed_append": "true/false — append Missed bullets to the card's Back after grading",
@@ -200,9 +200,9 @@ def _validate(key: str, value, is_executable, provider: str = "claude"):
             if v in CLAUDE_ALIASES or v.startswith("claude-") or " " in v:
                 raise ValueError(f"{v!r} is not an OpenAI model id — Codex needs e.g. a gpt-… model, or default")
             return v
-        if v in CLAUDE_ALIASES or v.startswith("claude-"):
-            return v
-        raise ValueError(f"unknown model {v!r} — use {', '.join(CLAUDE_ALIASES)} or a claude-… id")
+        if not any(c.isspace() for c in v):
+            return v  # custom gateway ids need not start with claude-; the CLI validates availability
+        raise ValueError(f"unknown model {v!r} — use a model id from the Model dropdown, not its display name")
     if key in ("ask_timeout_s", "grade_timeout_s"):
         try:
             v = int(value)

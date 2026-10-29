@@ -109,6 +109,9 @@ def read_references(path: str, root: Path = None) -> dict:
     files, skipped, used, truncated = [], [], 0, False
     for f in candidates:
         name = f.relative_to(base).as_posix()  # "sub/b.txt" on every OS
+        if not f.resolve().is_relative_to(base.resolve()):
+            skipped.append(name)
+            continue
         if len(files) >= MAX_FILES or used >= MAX_REF_CHARS:
             truncated = True
             break
@@ -146,6 +149,17 @@ def chunk_notes(loaded: dict, size: int = BATCH_SIZE) -> list:
                 seen.add(n["id"])
                 notes.append(n)
     return [notes[i:i + size] for i in range(0, len(notes), size)]
+
+
+def cards_for_batch(loaded: dict, batch) -> dict:
+    """The same deck-grouped cards for a batch's prompt and its action validation."""
+    if not batch:
+        return loaded
+    index, chunks = batch
+    selected = {}
+    for note in chunks[index]:
+        selected.setdefault(note["deck"], []).append(note)
+    return selected
 
 
 def batch_line(index: int, total: int) -> str:

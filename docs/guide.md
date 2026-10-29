@@ -6,7 +6,7 @@ Study in the Anki reviewer with an AI tutor (Claude Code or Codex): it turns eac
 
 - Anki desktop (built and tested on 26.9.2, macOS).
 - One AI CLI, installed and logged in with **your own** subscription — the add-on runs it locally and never sees your credentials:
-  - [Claude Code](https://claude.com/claude-code) (`claude auth login`) — default, fastest (keeps one process open per study session), or
+  - [Claude Code](https://claude.com/claude-code) (`claude auth login`) — default (preparation and grading share one process per card), or
   - [Codex CLI](https://github.com/openai/codex) (`codex login`, ChatGPT plan) — ~6 s per card.
 
 ## Install
@@ -32,11 +32,17 @@ The chat works like a general AI assistant: ask anything, and it can search and 
 
 Tell the chat what you want in plain words — "use opus", "give me 90 seconds to answer", "grade more strictly", "for this deck, ask for code", "undo that".
 
-- **Configurations** — provider (Claude Code / Codex; "use codex"), model ("default" = the provider's), timeouts, **Missed append** On/Off button (hover the **?** for what they do), CLI path (auto-detected), login with **Log in** / **Log out**.
+- **Configurations** — provider (Claude Code / Codex; "use codex"), model ("default" = the provider's; click the Model dropdown to load the CLI's live catalog, including custom picker entries, filtered by its model allowlist), timeouts, **Missed append** On/Off button (hover the **?** for what they do), CLI path (auto-detected), login with **Log in** / **Log out**.
 - **Custom Generic Rules** — apply to every card.
 - **Deck Settings** — click a deck and the chat box on the right starts with `Deck prompt for "<deck>": `, so you only type the prompt and press Enter. The chat adds it to the deck's prompt (it replaces the old one only if you say so) and quotes the result, so you can check nothing was lost. Click it again to close it and clear the prefix. One prompt per deck; subdecks inherit their parents'. Each deck's panel opens right under it and has **AI Study** and **Rewrite question** On/Off buttons (or say "no rewritten questions for this deck"); AI Study off = that deck reviews normally, without AI. Switching a deck makes all its subdecks follow; switch a subdeck afterwards to make an exception, which lasts until a parent is switched again. Click a deck to see what applies to it. A deck prompt can reshape the questions, e.g. "show the question as written, then one box each for Definition, Example, Exceptions" (up to 8). A deck prompt can also shape the grading, e.g. "give an overall score out of 100" or "rate each section 1–5 in a table" (shown below the feedback) or "start each Missed bullet with the points it cost". A deck prompt that mentions misses (e.g. "in each section's hint, point at what I missed before") lets the AI see the card's Missed points when it writes the questions. This works even with **Rewrite question** off. Off then means the AI keeps the card's question unless the deck prompt says otherwise. With Rewrite question off and no deck prompt, the card shows as written with no answer box (nothing is graded).
 
 **On several computers:** deck prompts, the deck On/Off buttons, Custom Generic Rules, timeouts and Missed append sync with your collection when you press Sync. Provider, model and CLI path stay per computer. Install the add-on on each computer; settings arrive with the first sync. A computer that had settings from an older version merges them in after its first sync; where another computer already set the same thing, that newer setting is kept. If you change the same setting on two computers without syncing in between, the most recent change wins (for decks: per deck; for the rest: the computer whose collection changed last). Sync before switching computers.
+
+**Reasoning effort:** Claude Code requests use explicit **medium** effort for studying and chat, including custom gateway models. Changing `/effort` in a separate CLI session does not change this. Codex keeps its CLI default.
+
+**Custom gateways:** the add-on reads the CLI's gateway URL and authentication environment settings from its user `settings.json`, so a model selected there can connect even when Anki starts from the Dock/Start menu. Other user environment settings, hooks and plugins remain disabled. A local gateway must be running when you study or chat. Custom model IDs need not start with `claude-`; use the exact ID from the dropdown, not its display name.
+
+**Ferry models:** studying and chat automatically accept Ferry's explicit queue-acceleration offer by interrupting and sending `加速`, once per request. The model and original task stay the same. This is not a retry for usage limits, and a queue without an acceleration offer still waits normally. No separate mod or setting is needed.
 
 **Windows login:** **Log in** opens a Claude Code window. Sign in in your browser (if it doesn't open, use the link in that window), and paste the code into that window if it asks for one.
 
@@ -68,7 +74,9 @@ Open **🤖 AI Window → ⚙ Settings**: it checks your AI CLI on open. If some
 
 ## Notes
 
-- Studying uses your own plan's usage (Claude or ChatGPT). Grading keeps one `claude` process open per review session; Codex starts one per message. Each chat keeps its own (read-only file tools, web search and web fetch, and with Claude read-only reviewer subagents, are its only tools).
+- Studying uses your own plan's usage (Claude or ChatGPT). Claude preparation and grading share one process for the current card; a different card starts fresh, so earlier cards do not accumulate in context. Timed-out study generation is stopped before the next request. Codex starts one process per message. Each chat keeps its own conversation (read-only file tools, web search and web fetch, and with Claude read-only reviewer subagents, are its only tools).
+- Formatting context is a short shared guide plus one optional note template, without long examples.
+- Closing a profile or quitting Anki normally stops all add-on-owned CLI jobs, including Settings checks, login and updates. On macOS/Linux, surviving CLI children are stopped too. Other independently started CLI sessions and the gateway are not touched. Force Quit or a crash may bypass cleanup; closing only the AI Window still preserves its chat.
 - Built and used on macOS. Windows and Linux are covered by automated tests but not yet tried in Anki itself. If the CLI isn't found, tell the chat its path ("claude path is /path/to/claude", or the same for codex).
 
 ## Development

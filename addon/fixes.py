@@ -8,12 +8,11 @@ login(), say(text, err, actions) and refresh().
 
 import os
 import tempfile
-import threading
 
 from aqt import mw
 from aqt.qt import QApplication
 
-from . import health, state
+from . import health, processes, state
 from .config_ops import TIMEOUT_RANGE
 from .session import PROVIDER_LABELS, PROVIDERS, find_cli
 
@@ -25,9 +24,9 @@ def _background(work, done):
             result = work()
         except Exception as e:  # handed to done(), which reports it
             result = e
-        mw.taskman.run_on_main(lambda: done(result))
+        processes.on_main(mw.taskman.run_on_main, lambda: done(result))
 
-    threading.Thread(target=run, daemon=True).start()
+    processes.background(run)
 
 
 class Fixer:
