@@ -213,7 +213,7 @@ class ConfigPage(Tab):
             except Exception as e:
                 options, error = [], f"couldn't load models: {e}"
             current = resolved_model(provider, configured) or configured
-            options = [(v, label) for v, label in options if v != configured and label.split(" ")[0] != current]
+            options = [(v, label) for v, label in options if v not in (configured, current)]
             mw.taskman.run_on_main(lambda: self.eval(
                 f"window.aiCfg && aiCfg.setModels({json.dumps(options)}, {json.dumps(error)});"))
 

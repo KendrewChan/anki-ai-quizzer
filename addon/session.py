@@ -63,7 +63,7 @@ CODEX_ISOLATION_FLAGS = [
 CODEX_WEB_FLAGS = [a if a != 'web_search="disabled"' else 'web_search="live"' for a in CODEX_ISOLATION_FLAGS]
 
 PROVIDERS = ("claude", "codex")  # the first one is the default
-CLAUDE_ALIASES = ("haiku", "sonnet", "opus", "fable")  # Claude Code's own model names: it has no command listing them
+CLAUDE_ALIASES = ("haiku", "sonnet", "opus", "fable")  # shorthand accepted by settings; discovery uses the CLI catalog
 LIMIT = re.compile(r"usage limit|rate limit|limit reached|hit your limit", re.I)
 
 
@@ -111,6 +111,24 @@ def find_cli(name: str, configured: str = "") -> str:
     return name
 
 
+def _claude_settings() -> dict:
+    config_dir = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.expanduser("~/.claude")
+    try:
+        with open(os.path.join(config_dir, "settings.json"), encoding="utf-8") as f:
+            settings = json.load(f)
+    except (OSError, ValueError):
+        return {}
+    return settings if isinstance(settings, dict) else {}
+
+
+def _claude_env() -> dict:
+    """Keep CLI transport/auth settings when Anki has no shell environment; never load hooks or other env settings."""
+    configured = _claude_settings().get("env") or {}
+    keys = ("ANTHROPIC_BASE_URL", "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN")
+    transport = {k: configured[k] for k in keys if isinstance(configured, dict) and isinstance(configured.get(k), str)}
+    return {**os.environ, **transport}
+
+
 def system_prompt_file(cwd: str, text: str) -> str:
     """The system prompt as a file for --system-prompt-file. As an argument, a long multi-line prompt is cut at the
     first newline by Windows' cmd.exe (npm installs claude as claude.cmd) and can pass the command-line length limit."""
@@ -136,6 +154,7 @@ def build_command(claude_path: str, model: str, prompt_file: str, web: bool = Fa
         "--input-format", "stream-json",
         "--output-format", "stream-json",
         "--verbose",
+        "--effort", "medium",
         "--replay-user-messages",
         *(WEB_FLAGS if web else ISOLATION_FLAGS),
         *(["--model", model] if model else []),
@@ -360,7 +379,7 @@ class ClaudeSession(_Backend):
         try:
             proc = subprocess.Popen(
                 self._cmd, cwd=self._cwd, text=True, bufsize=1,
-                stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, **PROC_KW,
+                stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=_claude_env(), **PROC_KW,
             )
         except OSError as e:
             raise SessionError("unavailable", f"cannot start claude ({self._cmd[0]}): {e}")
@@ -554,7 +573,7 @@ def _claude_model(line: str):
         obj = json.loads(line)
     except ValueError:
         return None
-    return obj.get("type") == "system" and obj.get("subtype") == "init" and obj.get("model") or None
+    return isinstance(obj, dict) and obj.get("type") == "system" and obj.get("subtype") == "init" and obj.get("model") or None
 
 
 def _watch(name: str, cmd: list, cwd: str, stdin_text: str, stream: str, timeout: float, match,
@@ -564,8 +583,15 @@ def _watch(name: str, cmd: list, cwd: str, stdin_text: str, stream: str, timeout
     Claude's stream-json input keeps stdin open (close_stdin=False); codex reads the whole prompt first.
     """
     proc = subprocess.Popen(cmd, cwd=cwd, text=True, stdin=subprocess.PIPE,
-                            stdout=subprocess.PIPE, stderr=subprocess.PIPE, **PROC_KW)
-    found, seen = [], deque(maxlen=5)
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                            env=_claude_env() if name == "claude" else None, **PROC_KW)
+    found, seen, errors = [], deque(maxlen=5), deque(maxlen=5)
+
+    def drain():
+        other = proc.stderr if stream == "stdout" else proc.stdout
+        for line in other:
+            if stream == "stdout":
+                errors.append(line.strip())
 
     def read():
         for line in getattr(proc, stream):
@@ -576,7 +602,9 @@ def _watch(name: str, cmd: list, cwd: str, stdin_text: str, stream: str, timeout
                 return
 
     reader = threading.Thread(target=read, daemon=True)
+    drainer = threading.Thread(target=drain, daemon=True)
     reader.start()
+    drainer.start()
     try:
         proc.stdin.write(stdin_text)
         proc.stdin.flush()
@@ -586,12 +614,9 @@ def _watch(name: str, cmd: list, cwd: str, stdin_text: str, stream: str, timeout
         pass
     reader.join(timeout)
     _terminate(proc)
+    drainer.join(3)
     if not found:
-        try:
-            rest = proc.stderr.read() if stream == "stdout" else ""
-        except (OSError, ValueError):
-            rest = ""
-        tail = " | ".join(x for x in [*seen, *rest.strip().splitlines()[-3:]] if x)[-400:]
+        tail = " | ".join(x for x in [*seen, *errors] if x)[-400:]
         raise SessionError("error", f"{name} did not start: {tail or 'no output'}")
     return found[0]
 
@@ -599,24 +624,45 @@ def _watch(name: str, cmd: list, cwd: str, stdin_text: str, stream: str, timeout
 # --- live model list for the Settings dropdown (fetched on click, never stored) ---
 
 def list_models(provider: str, path: str, cwd: str, timeout: float = 30) -> list:
-    """[(value, label)] the CLI offers right now. Codex: its catalog; Claude: what each alias resolves to."""
+    """[(value, label)] from the CLI's live catalog, without asking an AI model."""
     if provider == "codex":
         r = subprocess.run([path, "debug", "models"], capture_output=True, text=True,
                            timeout=timeout, stdin=subprocess.DEVNULL, **PROC_KW)
         models = json.loads(r.stdout).get("models") or []
         listed = sorted((m for m in models if m.get("visibility") == "list"), key=lambda m: m.get("priority", 0))
         return [(m["slug"], m["slug"]) for m in listed]
-    results = {}
+    request_id = "models"
+    request = {"type": "control_request", "request_id": request_id,
+               "request": {"subtype": "initialize"}}
 
-    def resolve(alias):
+    def catalog(line):
         try:
-            results[alias] = probe_model("claude", path, alias, cwd, timeout)
-        except Exception:  # alias not available on this account: leave it out
-            pass
+            obj = json.loads(line)
+        except ValueError:
+            return None
+        if isinstance(obj, dict) and obj.get("type") == "control_response":
+            response = obj.get("response") or {}
+            if isinstance(response, dict) and response.get("request_id") == request_id:
+                return response
+        return None
 
-    threads = [threading.Thread(target=resolve, args=(a,), daemon=True) for a in CLAUDE_ALIASES]
-    for t in threads:
-        t.start()
-    for t in threads:
-        t.join(timeout + 5)
-    return [(a, f"{results[a]} ({a})") for a in CLAUDE_ALIASES if a in results]
+    # User settings stay disabled; only the model picker and its allowlist enter this catalog-only process.
+    settings = _claude_settings()
+    picker = {k: settings[k] for k in ("modelPicker", "availableModels") if k in settings}
+    cmd = build_command(path, "", system_prompt_file(cwd, ""))
+    picker_file = os.path.join(cwd, f"models-{uuid.uuid4()}.json") if picker else None
+    try:
+        if picker_file:  # a file avoids Windows cmd.exe quoting and command-line length limits
+            with open(picker_file, "w", encoding="utf-8") as f:
+                json.dump(picker, f)
+            cmd += ["--settings", picker_file]
+        response = _watch("claude", cmd, cwd, json.dumps(request) + "\n", "stdout", timeout, catalog, close_stdin=False)
+    finally:
+        if picker_file and os.path.exists(picker_file):
+            os.remove(picker_file)
+    if response.get("subtype") != "success":
+        raise SessionError("error", response.get("error") or "couldn't load the model catalog")
+    data = response.get("response") or {}
+    if not isinstance(data, dict) or not isinstance(data.get("models"), list):
+        raise SessionError("error", "claude returned no model catalog")
+    return [(m["value"], m.get("displayName") or m["value"]) for m in data["models"]]

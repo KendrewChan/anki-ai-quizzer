@@ -49,7 +49,8 @@ def _load() -> dict:
     if _data is None:
         try:
             with open(PATH, encoding="utf-8") as f:
-                _data = json.load(f)
+                loaded = json.load(f)
+                _data = {k: v for k, v in loaded.items() if isinstance(v, dict)} if isinstance(loaded, dict) else {}
         except (OSError, ValueError):  # first run, or a damaged file: start over
             _data = {}
     return _data

@@ -236,12 +236,7 @@ class Conversation:
                                                   resolved_model(provider, model_for(cfg)))
         if "cards" in s:
             gen = self.host.generate
-            existing = gen.loaded
-            if t.batch:
-                index, chunks = t.batch
-                existing = {}
-                for n in chunks[index]:
-                    existing.setdefault(n["deck"], []).append(n)
+            existing = generate_ops.cards_for_batch(gen.loaded, t.batch)
             prompts = cfg.get("deck_prompts") or {}
             rules = [(name, prompts[i].strip()) for name, i in decks.items() if str(prompts.get(i, "")).strip()]
             t.staged = generate_col.staged(mw.col)
@@ -317,7 +312,8 @@ class Conversation:
                 rejected.append("✗ settings changes ignored: settings weren't loaded")
         if result["cards"]:
             gen = self.host.generate
-            existing = {n["id"]: n for notes in gen.loaded.values() for n in notes}
+            visible = generate_ops.cards_for_batch(gen.loaded, t.batch)
+            existing = {n["id"]: n for notes in visible.values() for n in notes}
             ops, bad = generate_ops.plan_changes(result["cards"], list(deck_ids()), existing, t.staged)
             rejected += bad
         fields = result["fields"]

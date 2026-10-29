@@ -35,8 +35,16 @@ def read():
     for line in sys.stdin:
         obj = json.loads(line)
         if obj.get("type") == "control_request":
-            interrupted.set()
-            emit({"type": "control_response", "response": {"subtype": "success", "request_id": obj["request_id"]}})
+            if obj["request"]["subtype"] == "initialize":
+                emit({"type": "control_response", "response": {
+                    "subtype": "success", "request_id": obj["request_id"], "response": {"models": [
+                        {"value": "sonnet", "displayName": "Sonnet", "description": "Claude model"},
+                        {"value": "claude-example-model[1m]", "displayName": "Example gateway model 1M",
+                         "description": "Custom model"},
+                    ]}}})
+            else:
+                interrupted.set()
+                emit({"type": "control_response", "response": {"subtype": "success", "request_id": obj["request_id"]}})
         else:
             messages.put(obj)
     messages.put(None)
